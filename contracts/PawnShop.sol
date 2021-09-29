@@ -30,6 +30,15 @@ contract PawnShop is Ownable, ReentrancyGuard {
         address _paymentToken
     );
 
+    event ExtendLendingTimeRequested(
+        address indexed _collection,
+        uint256 indexed _tokenId,
+        uint256 _lendingEndAt,
+        uint256 _liquidationAt,
+        uint256 _serviceFeeAmount,
+        uint256 _lendingFeeAmount
+    );
+
     enum State {
         open,
         in_progress,
@@ -40,12 +49,9 @@ contract PawnShop is Ownable, ReentrancyGuard {
     struct OfferParams {
         address owner;
         address lender;
-        uint256 minBorrowAmount;
         uint256 borrowAmount;
         address paymentToken;
         address dest;
-        address bidder;
-        uint256 bestBid;
         uint256 startAuctionAt;
         uint256 endAuctionAt;
         uint256 borrowCycleNo;
@@ -79,21 +85,24 @@ contract PawnShop is Ownable, ReentrancyGuard {
 
     mapping(address => uint) public collections;
 
+    address payable public treasury;
+
     Setting public setting;
 
-    constructor() public {
+    constructor(address payable _treasury) public {
         setting.auctionPeriod = 259200; // 3 days
         setting.lendingPerCycle = 604800; // 7 days for a cycle
         setting.liquidationPeriod = 2592000; // 30 days
         setting.lenderFeeRate = 10; // 10%
         setting.serviceFeeRate = 2; // 2%
+        treasury = _treasury;
     }
 
     /**
     * @dev functions affected by this modifier can only be invoked if the provided _amount input parameter
     * is not zero.
-    * @param _amount the amount provided
-    **/
+        * @param _amount the amount provided
+        **/
     modifier onlyAmountGreaterThanZero(uint256 _amount) {
         requireAmountGreaterThanZero(_amount);
         _;
@@ -102,28 +111,28 @@ contract PawnShop is Ownable, ReentrancyGuard {
     /**
     * @dev functions affected by this modifier can only be invoked if the provided cycleNo input parameter
     * is not zero.
-    **/
+        **/
     modifier onlyCycleNoGreaterThanOne(uint256 _cycleNo) {
         requireCycleNoGreaterThanOne(_cycleNo);
         _;
     }
 
-        /**
-        * @dev functions affected by this modifier can only be invoked if the provided _min input parameter
-        * is smaller than or equal _amount
-        * @param _amount the amount provided
-        **/
+    /**
+    * @dev functions affected by this modifier can only be invoked if the provided _min input parameter
+    * is smaller than or equal _amount
+    * @param _amount the amount provided
+    **/
     modifier isValidMinAmount(uint256 _min, uint256 _amount) {
         requireAmountGreaterThanOrEqualMinAmount(_min, _amount);
         _;
     }
 
     /**
-     * Allow or prevent NFT from a collection created offer
-     * 
-     * 1: allowed
-     * 0: disallowance
-     **/
+    * Allow or prevent NFT from a collection created offer
+    * 
+        * 1: allowed
+    * 0: disallowance
+    **/
     function setCollection(address _collection, uint auth) external onlyOwner {
         collections[_collection] = auth;
     }
@@ -215,12 +224,13 @@ contract PawnShop is Ownable, ReentrancyGuard {
             uint256 lendingPeriod = offer.params.borrowCycleNo * offer.setting.lendingPerCycle;
             offer.params.endLendingAt = offer.params.endAuctionAt + lendingPeriod;
             uint256 interestRate = offer.setting.lenderFeeRate + offer.setting.serviceFeeRate;
-            offer.params.interestAmount = (interestRate / 100) * offer.params.borrowAmount * (lendingPeriod / 365.25)
+            // TODO. seconds
+            offer.params.interestAmount = (interestRate / 100) * offer.params.borrowAmount * (lendingPeriod / 365);
         }
     }
 
     // Lender can bid
-    function bid(address _collection, uint256 _tokenId, uint256 bidAmount) {
+    function bid(address _collection, uint256 _tokenId, uint256 bidAmount) external {
         Offer storage offer = offers[_collection][_tokenId];
 
         require(offer.params.status == State.open, "bid-non-open-offer-error");
@@ -239,23 +249,49 @@ contract PawnShop is Ownable, ReentrancyGuard {
 
         }
 
-        emit OfferBid(_collection, _tokenId, msg.sender, bidAmount, offer.params.paymentToken)
+        emit OfferBid(_collection, _tokenId, msg.sender, bidAmount, offer.params.paymentToken);
     }
 
     // Borrower pay all and interest
-    function pay() {
+    function repay() external {
     }
 
     // Borrower interest only and extend deadline
-    function extendLendingTime(address _collection, uint256 _tokenId, uint256 extCycleNo) external {
+    function extendLendingTime(address _collection, uint256 _tokenId, uint256 extCycleNo)
+    external
+    onlyCycleNoGreaterThanOne(extCycleNo)
+    {
         Offer storage offer = offers[_collection][_tokenId];
         require(offer.params.owner == msg.sender, "only-owner-can-extend-lending-time");
+        require(offer.params.endLendingAt <= block.timestamp, "lending-time-closed");
+
+        uint256 extendInterestAmount = getExtendInterestAmount(_collection, _tokenId, extCycleNo);
+        uint256 totalInterestAmount = extendInterestAmount + offer.params.interestAmount;
+
+        uint256 serviceFeeAmount = (offer.setting.serviceFeeRate / 100) * totalInterestAmount;
+        uint256 lenderFeeAmount = (offer.setting.lenderFeeRate / 100) * totalInterestAmount;
+        if (serviceFeeAmount > 0) IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, serviceFeeAmount);
+        if (lenderFeeAmount > 0) IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.lender, lenderFeeAmount);
+
+        offer.params.interestAmount = 0;
+        offer.params.endLendingAt += extCycleNo * offer.setting.lendingPerCycle;
+        offer.params.liquidationAt = offer.params.endLendingAt + offer.setting.liquidationPeriod;
+
+        emit ExtendLendingTimeRequested(_collection, _tokenId, offer.params.endLendingAt, offer.params.liquidationAt, serviceFeeAmount, lenderFeeAmount);
     }
 
     // Lender can claim NFT if one time
     // Anyone can claim NFT if out of time
-    function claim() {
+    function claim() external {
 
+    }
+
+    function getExtendInterestAmount(address _collection, uint256 _tokenId, uint256 extCycleNo) public returns (uint256) {
+        Offer storage offer = offers[_collection][_tokenId];
+        uint256 extendTime = extCycleNo * offer.setting.lendingPerCycle;
+        // TODO: calculate with seconds
+        uint256 interestAmount = (extendTime / 365) * offer.params.borrowAmount * ((offer.setting.serviceFeeRate + offer.setting.lenderFeeRate ) / 100);
+        return interestAmount;
     }
 
     /**
