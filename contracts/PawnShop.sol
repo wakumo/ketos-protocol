@@ -16,18 +16,28 @@ contract PawnShop is Ownable, ReentrancyGuard {
         uint256 indexed _tokenId,
         address _owner,
         address _dest,
-        uint256 _minAmount,
         uint256 _amount,
         address _paymentToken,
-        uint256 _startAuctionAt
+        uint256 _startTime,
+        uint256 _endTime
     );
 
-    event OfferBid(
+    event Repay(
         address indexed _collection,
         uint256 indexed _tokenId,
-        address _bidder,
-        uint256 _bidAmount,
-        address _paymentToken
+        address _repayer,
+        uint256 _amount
+    );
+
+    event OfferUpdated(
+        address indexed _collection,
+        uint256 indexed _tokenId,
+        uint256 _amount
+    );
+
+    event OfferCancelled(
+        address indexed _collection,
+        uint256 indexed _tokenId
     );
 
     event ExtendLendingTimeRequested(
@@ -35,15 +45,19 @@ contract PawnShop is Ownable, ReentrancyGuard {
         uint256 indexed _tokenId,
         uint256 _lendingEndAt,
         uint256 _liquidationAt,
-        uint256 _serviceFeeAmount,
-        uint256 _lendingFeeAmount
+        uint256 _lendingFeeAmount,
+        uint256 _serviceFeeAmount
+    );
+
+    event NFTClaim(
+        address indexed _collection,
+        uint256 indexed _tokenId,
+        address _taker
     );
 
     enum State {
         open,
-        in_progress,
-        completed,
-        cancelled
+        in_progress
     }
 
     struct OfferParams {
@@ -52,12 +66,12 @@ contract PawnShop is Ownable, ReentrancyGuard {
         uint256 borrowAmount;
         address paymentToken;
         address dest;
-        uint256 startAuctionAt;
-        uint256 endAuctionAt;
+        uint256 startTime;
+        uint256 endTime;
         uint256 borrowCycleNo;
+        uint256 startLendingAt;
         uint256 endLendingAt;
         uint256 liquidationAt;
-        uint256 interestAmount;
         State status;
     }
 
@@ -83,8 +97,6 @@ contract PawnShop is Ownable, ReentrancyGuard {
     **/
     mapping(address => mapping(uint256 => Offer)) private offers;
 
-    mapping(address => uint) public collections;
-
     address payable public treasury;
 
     Setting public setting;
@@ -101,40 +113,20 @@ contract PawnShop is Ownable, ReentrancyGuard {
     /**
     * @dev functions affected by this modifier can only be invoked if the provided _amount input parameter
     * is not zero.
-        * @param _amount the amount provided
-        **/
+    * @param _amount the amount provided
+    **/
     modifier onlyAmountGreaterThanZero(uint256 _amount) {
         requireAmountGreaterThanZero(_amount);
         _;
     }
 
     /**
-    * @dev functions affected by this modifier can only be invoked if the provided cycleNo input parameter
-    * is not zero.
-        **/
-    modifier onlyCycleNoGreaterThanOne(uint256 _cycleNo) {
-        requireCycleNoGreaterThanOne(_cycleNo);
+     * @dev functions affected by this modifier can only be invoked if the provided cycleNo input parameter
+     * is not zero.
+     **/
+    modifier onlyCycleNoGreaterThanZero(uint256 _cycleNo) {
+        requireCycleNoGreaterThanZero(_cycleNo);
         _;
-    }
-
-    /**
-    * @dev functions affected by this modifier can only be invoked if the provided _min input parameter
-    * is smaller than or equal _amount
-    * @param _amount the amount provided
-    **/
-    modifier isValidMinAmount(uint256 _min, uint256 _amount) {
-        requireAmountGreaterThanOrEqualMinAmount(_min, _amount);
-        _;
-    }
-
-    /**
-    * Allow or prevent NFT from a collection created offer
-    * 
-        * 1: allowed
-    * 0: disallowance
-    **/
-    function setCollection(address _collection, uint auth) external onlyOwner {
-        collections[_collection] = auth;
     }
 
     function getOfferParams(address _collection, uint256 _tokenId) external view returns (OfferParams memory) {
@@ -162,15 +154,14 @@ contract PawnShop is Ownable, ReentrancyGuard {
         setting.serviceFeeRate = _serviceFeeRate;
     }
 
-    function createOffer(address _collection, uint256 _tokenId, address _dest, uint256 _minAmount, uint256 _amount, address _paymentToken, uint256 _borrowCycleNo)
-    external
-    nonReentrant
-    onlyAmountGreaterThanZero(_minAmount)
-    onlyCycleNoGreaterThanOne(_borrowCycleNo)
-    isValidMinAmount(_minAmount, _amount)
+    function createOffer(address _collection, uint256 _tokenId, address _dest, uint256 _amount, address _paymentToken, uint256 _borrowCycleNo, uint256 _startTime, uint256 _endTime)
+        external
+        nonReentrant
+        onlyAmountGreaterThanZero(_amount)
+        onlyCycleNoGreaterThanZero(_borrowCycleNo)
     {
-        // Required collection belongs to whitelist
-        require(collections[_collection] == 1, "invalid-collection");
+        // Validations
+        if (_endTime != 0) require(_endTime >= block.timestamp, "invalid-end-time");
 
         // Send NFT to this contract to escrow
         IERC721(_collection).transferFrom(msg.sender, address(this), _tokenId);
@@ -179,22 +170,19 @@ contract PawnShop is Ownable, ReentrancyGuard {
         Offer memory offer;
         OfferParams memory params;
 
+        // Set offer informations
         params.owner = msg.sender;
         params.lender = address(0);
-        params.minBorrowAmount = _minAmount;
         params.borrowAmount = _amount;
         params.paymentToken = _paymentToken;
         params.dest = _dest;
-        params.bidder = address(0);
         params.borrowCycleNo = _borrowCycleNo;
-        params.bestBid = 0;
-        params.interestAmount = 0;
-        params.startAuctionAt = block.timestamp;
+        if (_startTime == 0) params.startTime = block.timestamp;
+        params.endTime = _endTime;
+        params.startLendingAt = 0;
         params.status = State.open;
-
         offer.setting = setting;
         offer.params = params;
-
         offers[_collection][_tokenId] = offer;
 
         emit OfferCreated(
@@ -202,96 +190,165 @@ contract PawnShop is Ownable, ReentrancyGuard {
             _tokenId,
             msg.sender,
             _dest,
-            _minAmount,
             _amount,
             _paymentToken,
-            params.startAuctionAt
+            params.startTime,
+            params.endTime
         );
     }
 
     // Lender call this function to accepted the offer immediately
-    function applyOffer(address _collection, uint256 _tokenId) external {
+    function applyOffer(address _collection, uint256 _tokenId, uint256 _amount)
+        external
+        nonReentrant
+    {
         Offer storage offer = offers[_collection][_tokenId];
+
+        // Validations
+        require(offer.params.borrowAmount == _amount, "offer amount has changed");
         require(offer.params.status == State.open, "apply-non-open-offer");
+        if (offer.params.endTime != 0) require(offer.params.endTime >= block.timestamp, "expired-order");
 
-        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.dest, offer.params.borrowAmount);
-
+        // Update offer informations
         offer.params.status = State.in_progress;
         offer.params.lender = msg.sender;
-        offer.params.endAuctionAt = offer.params.startAuctionAt + offer.setting.auctionPeriod;
+        offer.params.startLendingAt = block.timestamp;
 
-        {
-            uint256 lendingPeriod = offer.params.borrowCycleNo * offer.setting.lendingPerCycle;
-            offer.params.endLendingAt = offer.params.endAuctionAt + lendingPeriod;
-            uint256 interestRate = offer.setting.lenderFeeRate + offer.setting.serviceFeeRate;
-            // TODO. seconds
-            offer.params.interestAmount = (interestRate / 100) * offer.params.borrowAmount * (lendingPeriod / 365);
-        }
+        // Calculate Fees
+        uint256 lendingPeriod = offer.params.borrowCycleNo * offer.setting.lendingPerCycle;
+        uint256 interestFee = (lendingPeriod / 31556926) * offer.params.borrowAmount * (offer.setting.lenderFeeRate / 100);
+        uint256 adminFee = (lendingPeriod / 31556926) * offer.params.borrowAmount * (offer.setting.serviceFeeRate / 100);
+        uint256 borrowAmountAfterFee = offer.params.borrowAmount - interestFee - adminFee;
+
+        // Send amount to borrower and fee to admin
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.dest, borrowAmountAfterFee);
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, adminFee);
+
+        // Update end times
+        offer.params.endLendingAt = offer.params.startLendingAt + lendingPeriod;
+        offer.params.liquidationAt = offer.params.endLendingAt + offer.setting.liquidationPeriod;
     }
 
-    // Lender can bid
-    function bid(address _collection, uint256 _tokenId, uint256 bidAmount) external {
+    // Borrower pay
+    function repay(address _collection, uint256 _tokenId) external {
         Offer storage offer = offers[_collection][_tokenId];
 
-        require(offer.params.status == State.open, "bid-non-open-offer-error");
-        require(bidAmount >= offer.params.minBorrowAmount, "bid-amount-under-min-error");
+        // Validations
+        require(offer.params.status == State.in_progress, "repay-in-progress-offer-only");
+        require(offer.params.endLendingAt >= block.timestamp, "overdue loan");
+        require(offer.params.owner == msg.sender, "only owner can repay and get NFT");
 
-        // Noone bid this offer yet!
-        if (offer.params.bidder == address(0)) {
-            IERC20(offer.params.paymentToken).transferFrom(msg.sender, address(this), bidAmount);
-        } else {
-            // Send last bid back to previous bidder
-            IERC20(offer.params.paymentToken).transferFrom(address(this), offer.params.bidder, offer.params.bestBid);
-            // Get current largest bid
-            IERC20(offer.params.paymentToken).transferFrom(msg.sender, address(this), bidAmount);
-            offer.params.bidder = msg.sender;
-            offer.params.bestBid = bidAmount;
+        // Repay token to lender
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.lender, offer.params.borrowAmount);
+        // Send NFT back to borrower
+        IERC721(_collection).transferFrom(address(this), msg.sender, _tokenId);
 
-        }
+        // Clear offer
+        clearOffer(_collection, _tokenId);
 
-        emit OfferBid(_collection, _tokenId, msg.sender, bidAmount, offer.params.paymentToken);
+        emit Repay(_collection, _tokenId, msg.sender, offer.params.borrowAmount);
     }
 
-    // Borrower pay all and interest
-    function repay() external {
+    function updateOffer(address _collection, uint256 _tokenId, uint256 _amount)
+        external
+        nonReentrant
+        onlyAmountGreaterThanZero(_amount)
+    {
+        Offer storage offer = offers[_collection][_tokenId];
+
+        // Validations
+        require(offer.params.owner == msg.sender, "only owner can update offer");
+        require(offer.params.lender == address(0), "only update unapply offer");
+
+        // Update Offer
+        offer.params.borrowAmount = _amount;
+
+        emit OfferUpdated(_collection, _tokenId, offer.params.borrowAmount);
+    }
+
+    function cancelOffer(address _collection, uint256 _tokenId, uint256 _amount)
+        external
+        nonReentrant
+        onlyAmountGreaterThanZero(_amount)
+    {
+        Offer storage offer = offers[_collection][_tokenId];
+
+        // Validations
+        require(offer.params.owner == msg.sender, "only owner can update offer");
+        require(offer.params.lender == address(0), "only update unapply offer");
+
+        // Clear offer
+        clearOffer(_collection, _tokenId);
+
+        emit OfferCancelled(_collection, _tokenId);
     }
 
     // Borrower interest only and extend deadline
     function extendLendingTime(address _collection, uint256 _tokenId, uint256 extCycleNo)
-    external
-    onlyCycleNoGreaterThanOne(extCycleNo)
+        external
+        onlyCycleNoGreaterThanZero(extCycleNo)
     {
         Offer storage offer = offers[_collection][_tokenId];
+
+        // Validations
         require(offer.params.owner == msg.sender, "only-owner-can-extend-lending-time");
+        require(offer.params.status == State.in_progress, "can only extend in progress offer");
         require(offer.params.endLendingAt <= block.timestamp, "lending-time-closed");
 
-        uint256 extendInterestAmount = getExtendInterestAmount(_collection, _tokenId, extCycleNo);
-        uint256 totalInterestAmount = extendInterestAmount + offer.params.interestAmount;
+        // Calculate Fees.
+        uint256 lendingPeriod = extCycleNo * offer.setting.lendingPerCycle;
+        uint256 interestFee = (lendingPeriod / 31556926) * offer.params.borrowAmount * (offer.setting.lenderFeeRate / 100);
+        uint256 serviceFee = (lendingPeriod / 31556926) * offer.params.borrowAmount * (offer.setting.serviceFeeRate / 100);
 
-        uint256 serviceFeeAmount = (offer.setting.serviceFeeRate / 100) * totalInterestAmount;
-        uint256 lenderFeeAmount = (offer.setting.lenderFeeRate / 100) * totalInterestAmount;
-        if (serviceFeeAmount > 0) IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, serviceFeeAmount);
-        if (lenderFeeAmount > 0) IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.lender, lenderFeeAmount);
+        // Send amount to borrower and fee to admin
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.lender, interestFee);
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, serviceFee);
 
-        offer.params.interestAmount = 0;
-        offer.params.endLendingAt += extCycleNo * offer.setting.lendingPerCycle;
+        // Update end times
+        offer.params.endLendingAt = offer.params.endLendingAt + lendingPeriod;
         offer.params.liquidationAt = offer.params.endLendingAt + offer.setting.liquidationPeriod;
 
-        emit ExtendLendingTimeRequested(_collection, _tokenId, offer.params.endLendingAt, offer.params.liquidationAt, serviceFeeAmount, lenderFeeAmount);
+        emit ExtendLendingTimeRequested(_collection, _tokenId, offer.params.endLendingAt, offer.params.liquidationAt, interestFee, serviceFee);
     }
 
-    // Lender can claim NFT if one time
-    // Anyone can claim NFT if out of time
-    function claim() external {
-
-    }
-
-    function getExtendInterestAmount(address _collection, uint256 _tokenId, uint256 extCycleNo) public returns (uint256) {
+    /**
+    *
+    * In liquidation period, only lender can claim NFT
+    * After liquidation period, anyone with fast hand can claim NFT
+    *
+    **/
+    function claim(address _collection, uint256 _tokenId)
+        external
+        nonReentrant
+    {
         Offer storage offer = offers[_collection][_tokenId];
-        uint256 extendTime = extCycleNo * offer.setting.lendingPerCycle;
-        // TODO: calculate with seconds
-        uint256 interestAmount = (extendTime / 365) * offer.params.borrowAmount * ((offer.setting.serviceFeeRate + offer.setting.lenderFeeRate ) / 100);
-        return interestAmount;
+
+        // Validations
+        require(block.timestamp > offer.params.endLendingAt, "can not claim in lending period");
+
+        address nftTaker;
+
+        if (block.timestamp <= offer.params.liquidationAt) {
+            require(offer.params.lender == msg.sender, "only lender can claim NFT at this time");
+            nftTaker = offer.params.lender;
+        } else {
+            nftTaker = msg.sender;
+        }
+
+        // Send NFT to taker
+        IERC721(_collection).transferFrom(address(this), nftTaker, _tokenId);
+
+        // Clear offer
+        clearOffer(_collection, _tokenId);
+
+        emit NFTClaim(_collection, _tokenId, nftTaker);
+    }
+
+    /**
+     * Clear to allow borrower can createOffer again
+     **/
+    function clearOffer(address _collection, uint256 _tokenId) internal {
+        delete offers[_collection][_tokenId];
     }
 
     /**
@@ -302,15 +359,15 @@ contract PawnShop is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
-     **/
-    function requireCycleNoGreaterThanOne(uint256 _cycleNo) internal pure {
-        require(_cycleNo > 1, "Cycle number must be greater than 1");
+    * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
+    **/
+    function requireCycleNoGreaterThanZero(uint256 _cycleNo) internal pure {
+        require(_cycleNo >= 1, "Cycle number must be greater than or equal 1");
     }
 
     /**
-    * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
-    **/
+     * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
+     **/
     function requireAmountGreaterThanOrEqualMinAmount(uint256 _min, uint256 _amount) internal pure {
         require(_amount >= _min, "Min amount must be greatr than or equal expected amount");
     }
