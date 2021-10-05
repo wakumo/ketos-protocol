@@ -106,7 +106,7 @@ contract PawnShop is Ownable, ReentrancyGuard {
 
     address payable public treasury;
 
-    uint256 public constant YEAR_IN_SECONDS = 31556926;
+    uint256 private constant YEAR_IN_SECONDS = 31556926;
 
     Setting public setting;
 
