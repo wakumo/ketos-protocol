@@ -42,10 +42,7 @@ contract PawnShop is Ownable, ReentrancyGuard {
         uint256 _amount
     );
 
-    event OfferCancelled(
-        address indexed _collection,
-        uint256 indexed _tokenId
-    );
+    event OfferCancelled(address indexed _collection, uint256 indexed _tokenId);
 
     event ExtendLendingTimeRequested(
         address indexed _collection,
@@ -62,10 +59,7 @@ contract PawnShop is Ownable, ReentrancyGuard {
         address _taker
     );
 
-    enum State {
-        open,
-        in_progress
-    }
+    enum State {open, in_progress}
 
     struct OfferParams {
         address owner;
@@ -97,11 +91,11 @@ contract PawnShop is Ownable, ReentrancyGuard {
     }
 
     /**
-    * Make it private to avoid stack too deep errors
-    * Struct over 15 fields can't return in getters
-    *
-    * Split getter function out to getOfferParams() and getOfferSetting()
-    **/
+     * Make it private to avoid stack too deep errors
+     * Struct over 15 fields can't return in getters
+     *
+     * Split getter function out to getOfferParams() and getOfferSetting()
+     **/
     mapping(address => mapping(uint256 => Offer)) private offers;
 
     address payable public treasury;
@@ -119,11 +113,18 @@ contract PawnShop is Ownable, ReentrancyGuard {
         treasury = _treasury;
     }
 
+    function initialize(address _addressesProvider) public initializer {
+        console.log("CO CHAY CAI SET NAY DC K");
+        addressesProvider = AddressesProvider(_addressesProvider);
+        console.log(_addressesProvider);
+        console.log(address(addressesProvider));
+    }
+
     /**
-    * @dev functions affected by this modifier can only be invoked if the provided _amount input parameter
-    * is not zero.
-    * @param _amount the amount provided
-    **/
+     * @dev functions affected by this modifier can only be invoked if the provided _amount input parameter
+     * is not zero.
+     * @param _amount the amount provided
+     **/
     modifier onlyAmountGreaterThanZero(uint256 _amount) {
         requireAmountGreaterThanZero(_amount);
         _;
@@ -138,11 +139,19 @@ contract PawnShop is Ownable, ReentrancyGuard {
         _;
     }
 
-    function getOfferParams(address _collection, uint256 _tokenId) external view returns (OfferParams memory) {
+    function getOfferParams(address _collection, uint256 _tokenId)
+        external
+        view
+        returns (OfferParams memory)
+    {
         return offers[_collection][_tokenId].params;
     }
 
-    function getOfferSetting(address _collection, uint256 _tokenId) external view returns (Setting memory) {
+    function getOfferSetting(address _collection, uint256 _tokenId)
+        external
+        view
+        returns (Setting memory)
+    {
         return offers[_collection][_tokenId].setting;
     }
 
@@ -154,24 +163,43 @@ contract PawnShop is Ownable, ReentrancyGuard {
         setting.lendingPerCycle = _lendingPerCycle;
     }
 
-    function setLiquidationPeriod(uint256 _liquidationPeriod) external onlyOwner {
+    function setLiquidationPeriod(uint256 _liquidationPeriod)
+        external
+        onlyOwner
+    {
         setting.liquidationPeriod = _liquidationPeriod;
     }
 
-    function setInterestRate(uint256 _lenderFeeRate, uint256 _serviceFeeRate) external onlyOwner {
+    function setInterestRate(uint256 _lenderFeeRate, uint256 _serviceFeeRate)
+        external
+        onlyOwner
+    {
         setting.lenderFeeRate = _lenderFeeRate;
         setting.serviceFeeRate = _serviceFeeRate;
     }
 
-    function createOffer(address _collection, uint256 _tokenId, address _dest, uint256 _amount, address _paymentToken, uint256 _borrowCycleNo, uint256 _startTime, uint256 _endTime)
+    function createOffer(
+        address _collection,
+        uint256 _tokenId,
+        address _dest,
+        uint256 _amount,
+        address _paymentToken,
+        uint256 _borrowCycleNo,
+        uint256 _startTime,
+        uint256 _endTime
+    )
         external
         nonReentrant
         onlyAmountGreaterThanZero(_amount)
         onlyCycleNoGreaterThanZero(_borrowCycleNo)
     {
         // Validations
-        if (_endTime != 0) require(_endTime >= block.timestamp, "invalid-end-time");
-        require(IERC721(_collection).getApproved(_tokenId) == address(this), "please approve NFT first");
+        if (_endTime != 0)
+            require(_endTime >= block.timestamp, "invalid-end-time");
+        require(
+            IERC721(_collection).getApproved(_tokenId) == address(this),
+            "please approve NFT first"
+        );
 
         // Send NFT to this contract to escrow
         IERC721(_collection).transferFrom(msg.sender, address(this), _tokenId);
@@ -208,16 +236,21 @@ contract PawnShop is Ownable, ReentrancyGuard {
     }
 
     // Lender call this function to accepted the offer immediately
-    function applyOffer(address _collection, uint256 _tokenId, uint256 _amount)
-        external
-        nonReentrant
-    {
+    function applyOffer(
+        address _collection,
+        uint256 _tokenId,
+        uint256 _amount
+    ) external nonReentrant {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(offer.params.borrowAmount == _amount, "offer amount has changed");
+        require(
+            offer.params.borrowAmount == _amount,
+            "offer amount has changed"
+        );
         require(offer.params.status == State.open, "apply-non-open-offer");
-        if (offer.params.endTime != 0) require(offer.params.endTime >= block.timestamp, "expired-order");
+        if (offer.params.endTime != 0)
+            require(offer.params.endTime >= block.timestamp, "expired-order");
 
         // Update offer informations
         offer.params.status = State.in_progress;
@@ -225,18 +258,44 @@ contract PawnShop is Ownable, ReentrancyGuard {
         offer.params.startLendingAt = block.timestamp;
 
         // Calculate Fees
-        uint256 lendingPeriod = offer.params.borrowCycleNo.mul(offer.setting.lendingPerCycle);
-        uint256 interestFee = lendingPeriod.mul(offer.params.borrowAmount).mul(offer.setting.lenderFeeRate).div(YEAR_IN_SECONDS).div(1000000);
-        uint256 adminFee = lendingPeriod.mul(offer.params.borrowAmount).mul(offer.setting.serviceFeeRate).div(YEAR_IN_SECONDS).div(1000000);
-        uint256 borrowAmountAfterFee = offer.params.borrowAmount.sub(interestFee).sub(adminFee);
+        uint256 lendingPeriod = offer.params.borrowCycleNo.mul(
+            offer.setting.lendingPerCycle
+        );
+        uint256 interestFee = lendingPeriod
+            .mul(offer.params.borrowAmount)
+            .mul(offer.setting.lenderFeeRate)
+            .div(YEAR_IN_SECONDS)
+            .div(1000000);
+        uint256 adminFee = lendingPeriod
+            .mul(offer.params.borrowAmount)
+            .mul(offer.setting.serviceFeeRate)
+            .div(YEAR_IN_SECONDS)
+            .div(1000000);
+        uint256 borrowAmountAfterFee = offer
+            .params
+            .borrowAmount
+            .sub(interestFee)
+            .sub(adminFee);
 
         // Send amount to borrower and fee to admin
-        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.dest, borrowAmountAfterFee);
-        IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, adminFee);
+        IERC20(offer.params.paymentToken).transferFrom(
+            msg.sender,
+            offer.params.dest,
+            borrowAmountAfterFee
+        );
+        IERC20(offer.params.paymentToken).transferFrom(
+            msg.sender,
+            treasury,
+            adminFee
+        );
 
         // Update end times
-        offer.params.endLendingAt = offer.params.startLendingAt.add(lendingPeriod);
-        offer.params.liquidationAt = offer.params.endLendingAt.add(offer.setting.liquidationPeriod);
+        offer.params.endLendingAt = offer.params.startLendingAt.add(
+            lendingPeriod
+        );
+        offer.params.liquidationAt = offer.params.endLendingAt.add(
+            offer.setting.liquidationPeriod
+        );
 
         emit OfferApplied(_collection, _tokenId, msg.sender);
     }
@@ -249,29 +308,48 @@ contract PawnShop is Ownable, ReentrancyGuard {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(offer.params.status == State.in_progress, "repay-in-progress-offer-only");
+        require(
+            offer.params.status == State.in_progress,
+            "repay-in-progress-offer-only"
+        );
         require(offer.params.endLendingAt >= block.timestamp, "overdue loan");
-        require(offer.params.owner == msg.sender, "only owner can repay and get NFT");
+        require(
+            offer.params.owner == msg.sender,
+            "only owner can repay and get NFT"
+        );
 
         // Repay token to lender
-        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.lender, offer.params.borrowAmount);
+        IERC20(offer.params.paymentToken).transferFrom(
+            msg.sender,
+            offer.params.lender,
+            offer.params.borrowAmount
+        );
         // Send NFT back to borrower
         IERC721(_collection).transferFrom(address(this), msg.sender, _tokenId);
 
         // Clear offer
         clearOffer(_collection, _tokenId);
 
-        emit Repay(_collection, _tokenId, msg.sender, offer.params.borrowAmount);
+        emit Repay(
+            _collection,
+            _tokenId,
+            msg.sender,
+            offer.params.borrowAmount
+        );
     }
 
-    function updateOffer(address _collection, uint256 _tokenId, uint256 _amount)
-        external
-        onlyAmountGreaterThanZero(_amount)
-    {
+    function updateOffer(
+        address _collection,
+        uint256 _tokenId,
+        uint256 _amount
+    ) external onlyAmountGreaterThanZero(_amount) {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(offer.params.owner == msg.sender, "only owner can update offer");
+        require(
+            offer.params.owner == msg.sender,
+            "only owner can update offer"
+        );
         require(offer.params.lender == address(0), "only update unapply offer");
 
         // Update Offer
@@ -280,13 +358,14 @@ contract PawnShop is Ownable, ReentrancyGuard {
         emit OfferUpdated(_collection, _tokenId, offer.params.borrowAmount);
     }
 
-    function cancelOffer(address _collection, uint256 _tokenId)
-        external
-    {
+    function cancelOffer(address _collection, uint256 _tokenId) external {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(offer.params.owner == msg.sender, "only owner can cancel offer");
+        require(
+            offer.params.owner == msg.sender,
+            "only owner can cancel offer"
+        );
         require(offer.params.lender == address(0), "only update unapply offer");
 
         // Send NFT back to borrower
@@ -299,40 +378,76 @@ contract PawnShop is Ownable, ReentrancyGuard {
     }
 
     // Borrower interest only and extend deadline
-    function extendLendingTime(address _collection, uint256 _tokenId, uint256 extCycleNo)
-        external
-        nonReentrant
-        onlyCycleNoGreaterThanZero(extCycleNo)
-    {
+    function extendLendingTime(
+        address _collection,
+        uint256 _tokenId,
+        uint256 extCycleNo
+    ) external nonReentrant onlyCycleNoGreaterThanZero(extCycleNo) {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(offer.params.owner == msg.sender, "only-owner-can-extend-lending-time");
-        require(offer.params.status == State.in_progress, "can only extend in progress offer");
-        require(offer.params.endLendingAt >= block.timestamp, "lending-time-closed");
+        require(
+            offer.params.owner == msg.sender,
+            "only-owner-can-extend-lending-time"
+        );
+        require(
+            offer.params.status == State.in_progress,
+            "can only extend in progress offer"
+        );
+        require(
+            offer.params.endLendingAt >= block.timestamp,
+            "lending-time-closed"
+        );
 
         // Calculate Fees
         uint256 lendingPeriod = extCycleNo.mul(offer.setting.lendingPerCycle);
-        uint256 interestFee = lendingPeriod.mul(offer.params.borrowAmount).mul(offer.setting.lenderFeeRate).div(YEAR_IN_SECONDS).div(1000000);
-        uint256 serviceFee = lendingPeriod.mul(offer.params.borrowAmount).mul(offer.setting.serviceFeeRate).div(YEAR_IN_SECONDS).div(1000000);
+        uint256 interestFee = lendingPeriod
+            .mul(offer.params.borrowAmount)
+            .mul(offer.setting.lenderFeeRate)
+            .div(YEAR_IN_SECONDS)
+            .div(1000000);
+        uint256 serviceFee = lendingPeriod
+            .mul(offer.params.borrowAmount)
+            .mul(offer.setting.serviceFeeRate)
+            .div(YEAR_IN_SECONDS)
+            .div(1000000);
 
         // Send amount to borrower and fee to admin
-        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.lender, interestFee);
-        IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, serviceFee);
+        IERC20(offer.params.paymentToken).transferFrom(
+            msg.sender,
+            offer.params.lender,
+            interestFee
+        );
+        IERC20(offer.params.paymentToken).transferFrom(
+            msg.sender,
+            treasury,
+            serviceFee
+        );
 
         // Update end times
-        offer.params.endLendingAt = offer.params.endLendingAt.add(lendingPeriod);
-        offer.params.liquidationAt = offer.params.endLendingAt.add(offer.setting.liquidationPeriod);
+        offer.params.endLendingAt = offer.params.endLendingAt.add(
+            lendingPeriod
+        );
+        offer.params.liquidationAt = offer.params.endLendingAt.add(
+            offer.setting.liquidationPeriod
+        );
 
-        emit ExtendLendingTimeRequested(_collection, _tokenId, offer.params.endLendingAt, offer.params.liquidationAt, interestFee, serviceFee);
+        emit ExtendLendingTimeRequested(
+            _collection,
+            _tokenId,
+            offer.params.endLendingAt,
+            offer.params.liquidationAt,
+            interestFee,
+            serviceFee
+        );
     }
 
     /**
-    *
-    * In liquidation period, only lender can claim NFT
-    * After liquidation period, anyone with fast hand can claim NFT
-    *
-    **/
+     *
+     * In liquidation period, only lender can claim NFT
+     * After liquidation period, anyone with fast hand can claim NFT
+     *
+     **/
     function claim(address _collection, uint256 _tokenId)
         external
         nonReentrant
@@ -340,8 +455,15 @@ contract PawnShop is Ownable, ReentrancyGuard {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(block.timestamp > offer.params.endLendingAt, "can not claim in lending period");
-        if (block.timestamp <= offer.params.liquidationAt) require(offer.params.lender == msg.sender, "only lender can claim NFT at this time");
+        require(
+            block.timestamp > offer.params.endLendingAt,
+            "can not claim in lending period"
+        );
+        if (block.timestamp <= offer.params.liquidationAt)
+            require(
+                offer.params.lender == msg.sender,
+                "only lender can claim NFT at this time"
+            );
 
         // Send NFT to taker
         IERC721(_collection).transferFrom(address(this), msg.sender, _tokenId);
@@ -360,15 +482,15 @@ contract PawnShop is Ownable, ReentrancyGuard {
     }
 
     /**
-    * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
-    **/
+     * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
+     **/
     function requireAmountGreaterThanZero(uint256 _amount) internal pure {
         require(_amount > 0, "Amount must be greater than 0");
     }
 
     /**
-    * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
-    **/
+     * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
+     **/
     function requireCycleNoGreaterThanZero(uint256 _cycleNo) internal pure {
         require(_cycleNo >= 1, "Cycle number must be greater than or equal 1");
     }
@@ -376,7 +498,13 @@ contract PawnShop is Ownable, ReentrancyGuard {
     /**
      * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
      **/
-    function requireAmountGreaterThanOrEqualMinAmount(uint256 _min, uint256 _amount) internal pure {
-        require(_amount >= _min, "Min amount must be greatr than or equal expected amount");
+    function requireAmountGreaterThanOrEqualMinAmount(
+        uint256 _min,
+        uint256 _amount
+    ) internal pure {
+        require(
+            _amount >= _min,
+            "Min amount must be greatr than or equal expected amount"
+        );
     }
 }

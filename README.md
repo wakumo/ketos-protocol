@@ -13,3 +13,7 @@ npx hardhat node
 node scripts/sample-script.js
 npx hardhat help
 ```
+
+```
+npx hardhat verify --contract contracts/AddressesProvider.sol:AddressesProvider --network rinkeby 0xeF31027350Be2c7439C1b0BE022d49421488b72C
+```
