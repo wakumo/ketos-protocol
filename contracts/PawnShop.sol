@@ -77,6 +77,11 @@ contract PawnShop is Ownable, ReentrancyGuard {
     }
 
     // System settings
+    struct Fee {
+        uint256 lenderFeeRate;
+        uint256 serviceFeeRate;
+    }
+
     struct Setting {
         uint256 auctionPeriod;
         uint256 lendingPerCycle;
@@ -90,13 +95,15 @@ contract PawnShop is Ownable, ReentrancyGuard {
         Setting setting;
     }
 
-    /**
-     * Make it private to avoid stack too deep errors
-     * Struct over 15 fields can't return in getters
-     *
-     * Split getter function out to getOfferParams() and getOfferSetting()
-     **/
+    // /**
+    //  * Make it private to avoid stack too deep errors
+    //  * Struct over 15 fields can't return in getters
+    //  *
+    //  * Split getter function out to getOfferParams() and getOfferSetting()
+    //  **/
     mapping(address => mapping(uint256 => Offer)) private offers;
+
+    mapping(address => Fee) private fees;
 
     address payable public treasury;
 
@@ -108,16 +115,7 @@ contract PawnShop is Ownable, ReentrancyGuard {
         setting.auctionPeriod = 259200; // 3 days
         setting.lendingPerCycle = 604800; // 7 days for a cycle
         setting.liquidationPeriod = 2592000; // 30 days
-        setting.lenderFeeRate = 100000; // 10%
-        setting.serviceFeeRate = 20000; // 2%
         treasury = _treasury;
-    }
-
-    function initialize(address _addressesProvider) public initializer {
-        console.log("CO CHAY CAI SET NAY DC K");
-        addressesProvider = AddressesProvider(_addressesProvider);
-        console.log(_addressesProvider);
-        console.log(address(addressesProvider));
     }
 
     /**
@@ -155,6 +153,10 @@ contract PawnShop is Ownable, ReentrancyGuard {
         return offers[_collection][_tokenId].setting;
     }
 
+    function getFee(address _token) public view returns (Fee memory) {
+        return fees[_token];
+    }
+
     function setAuctionPeriod(uint256 _auctionPeriod) external onlyOwner {
         setting.auctionPeriod = _auctionPeriod;
     }
@@ -170,12 +172,13 @@ contract PawnShop is Ownable, ReentrancyGuard {
         setting.liquidationPeriod = _liquidationPeriod;
     }
 
-    function setInterestRate(uint256 _lenderFeeRate, uint256 _serviceFeeRate)
-        external
-        onlyOwner
-    {
-        setting.lenderFeeRate = _lenderFeeRate;
-        setting.serviceFeeRate = _serviceFeeRate;
+    function setFee(
+        address _token,
+        uint256 _lenderFeeRate,
+        uint256 _serviceFeeRate
+    ) external onlyOwner {
+        fees[_token].lenderFeeRate = _lenderFeeRate;
+        fees[_token].serviceFeeRate = _serviceFeeRate;
     }
 
     function createOffer(
@@ -200,7 +203,11 @@ contract PawnShop is Ownable, ReentrancyGuard {
             IERC721(_collection).getApproved(_tokenId) == address(this),
             "please approve NFT first"
         );
-
+        require(_paymentToken != address(0), "invalid-payment-token");
+        require(
+            fees[_paymentToken].lenderFeeRate != 0,
+            "invalid-payment-token"
+        );
         // Send NFT to this contract to escrow
         IERC721(_collection).transferFrom(msg.sender, address(this), _tokenId);
 
@@ -215,11 +222,17 @@ contract PawnShop is Ownable, ReentrancyGuard {
         params.paymentToken = _paymentToken;
         params.dest = _dest;
         params.borrowCycleNo = _borrowCycleNo;
-        if (_startTime == 0) params.startTime = block.timestamp;
+        if (_startTime == 0) {
+            params.startTime = block.timestamp;
+        } else {
+            params.startTime = _startTime;
+        }
         params.endTime = _endTime;
         params.startLendingAt = 0;
         params.status = State.open;
         offer.setting = setting;
+        offer.setting.lenderFeeRate = fees[_paymentToken].lenderFeeRate;
+        offer.setting.serviceFeeRate = fees[_paymentToken].serviceFeeRate;
         offer.params = params;
         offers[_collection][_tokenId] = offer;
 
@@ -276,7 +289,6 @@ contract PawnShop is Ownable, ReentrancyGuard {
             .borrowAmount
             .sub(interestFee)
             .sub(adminFee);
-
         // Send amount to borrower and fee to admin
         IERC20(offer.params.paymentToken).transferFrom(
             msg.sender,
@@ -288,7 +300,6 @@ contract PawnShop is Ownable, ReentrancyGuard {
             treasury,
             adminFee
         );
-
         // Update end times
         offer.params.endLendingAt = offer.params.startLendingAt.add(
             lendingPeriod
@@ -327,15 +338,13 @@ contract PawnShop is Ownable, ReentrancyGuard {
         // Send NFT back to borrower
         IERC721(_collection).transferFrom(address(this), msg.sender, _tokenId);
 
+        // clone amount value to emit
+        uint256 borrowAmount = offer.params.borrowAmount;
+
         // Clear offer
         clearOffer(_collection, _tokenId);
 
-        emit Repay(
-            _collection,
-            _tokenId,
-            msg.sender,
-            offer.params.borrowAmount
-        );
+        emit Repay(_collection, _tokenId, msg.sender, borrowAmount);
     }
 
     function updateOffer(
@@ -464,7 +473,12 @@ contract PawnShop is Ownable, ReentrancyGuard {
                 offer.params.lender == msg.sender,
                 "only lender can claim NFT at this time"
             );
-
+        require(
+            (msg.sender == treasury) ||
+                (msg.sender == offer.params.lender) ||
+                (msg.sender == offer.params.owner),
+            "invalid-address"
+        );
         // Send NFT to taker
         IERC721(_collection).transferFrom(address(this), msg.sender, _tokenId);
 
@@ -506,5 +520,10 @@ contract PawnShop is Ownable, ReentrancyGuard {
             _amount >= _min,
             "Min amount must be greatr than or equal expected amount"
         );
+    }
+
+    // Function for test
+    function currentTime() public view returns (uint256) {
+        return block.timestamp;
     }
 }
