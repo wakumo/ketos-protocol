@@ -148,6 +148,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         uint256 _endTime
     )
         external
+        override
         nonReentrant
         onlyAmountGreaterThanZero(_amount)
         onlyCycleNoGreaterThanZero(_borrowCycleNo)
@@ -209,7 +210,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         address _collection,
         uint256 _tokenId,
         uint256 _amount
-    ) external nonReentrant {
+    ) external override nonReentrant {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
@@ -270,6 +271,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
     // Borrower pay
     function repay(address _collection, uint256 _tokenId)
         external
+        override
         nonReentrant
     {
         Offer storage offer = offers[_collection][_tokenId];
@@ -307,7 +309,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         address _collection,
         uint256 _tokenId,
         uint256 _amount
-    ) external onlyAmountGreaterThanZero(_amount) {
+    ) external override onlyAmountGreaterThanZero(_amount) {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
@@ -323,7 +325,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         emit OfferUpdated(_collection, _tokenId, offer.params.borrowAmount);
     }
 
-    function cancelOffer(address _collection, uint256 _tokenId) external {
+    function cancelOffer(address _collection, uint256 _tokenId) external override {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
@@ -347,7 +349,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         address _collection,
         uint256 _tokenId,
         uint256 extCycleNo
-    ) external nonReentrant onlyCycleNoGreaterThanZero(extCycleNo) {
+    ) external override nonReentrant onlyCycleNoGreaterThanZero(extCycleNo) {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
@@ -415,6 +417,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
      **/
     function claim(address _collection, uint256 _tokenId)
         external
+        override
         nonReentrant
     {
         Offer storage offer = offers[_collection][_tokenId];
