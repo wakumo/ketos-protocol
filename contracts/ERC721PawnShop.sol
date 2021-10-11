@@ -9,55 +9,10 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract PawnShop is Ownable, ReentrancyGuard {
+import './interfaces/IPawnShop.sol';
+
+contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
     using SafeMath for uint256;
-
-    event OfferCreated(
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        address _owner,
-        address _dest,
-        uint256 _amount,
-        address _paymentToken,
-        uint256 _startTime,
-        uint256 _endTime
-    );
-
-    event OfferApplied(
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        address _lender
-    );
-
-    event Repay(
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        address _repayer,
-        uint256 _amount
-    );
-
-    event OfferUpdated(
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        uint256 _amount
-    );
-
-    event OfferCancelled(address indexed _collection, uint256 indexed _tokenId);
-
-    event ExtendLendingTimeRequested(
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        uint256 _lendingEndAt,
-        uint256 _liquidationAt,
-        uint256 _lendingFeeAmount,
-        uint256 _serviceFeeAmount
-    );
-
-    event NFTClaim(
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        address _taker
-    );
 
     enum State {open, in_progress}
 
@@ -157,16 +112,17 @@ contract PawnShop is Ownable, ReentrancyGuard {
         return fees[_token];
     }
 
-    function setAuctionPeriod(uint256 _auctionPeriod) external onlyOwner {
+    function setAuctionPeriod(uint256 _auctionPeriod) external override onlyOwner {
         setting.auctionPeriod = _auctionPeriod;
     }
 
-    function setLendingPerCycle(uint256 _lendingPerCycle) external onlyOwner {
+    function setLendingPerCycle(uint256 _lendingPerCycle) external override onlyOwner {
         setting.lendingPerCycle = _lendingPerCycle;
     }
 
     function setLiquidationPeriod(uint256 _liquidationPeriod)
         external
+        override
         onlyOwner
     {
         setting.liquidationPeriod = _liquidationPeriod;
@@ -176,9 +132,9 @@ contract PawnShop is Ownable, ReentrancyGuard {
         address _token,
         uint256 _lenderFeeRate,
         uint256 _serviceFeeRate
-    ) external onlyOwner {
-        fees[_token].lenderFeeRate = _lenderFeeRate;
-        fees[_token].serviceFeeRate = _serviceFeeRate;
+    ) external override onlyOwner {
+        if (_lenderFeeRate > 0) fees[_token].lenderFeeRate = _lenderFeeRate;
+        if (_serviceFeeRate > 0) fees[_token].serviceFeeRate = _serviceFeeRate;
     }
 
     function createOffer(

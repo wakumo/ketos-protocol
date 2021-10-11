@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract SimpleTokenERC20 is Context, ERC20, Ownable {
+contract TestERC20 is Context, ERC20, Ownable {
     // uint256 public totalSupply = 1000000000;
 
     // address public owner;
