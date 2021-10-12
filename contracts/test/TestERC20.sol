@@ -11,7 +11,7 @@ contract TestERC20 is Context, ERC20, Ownable {
 
     // address public owner;
 
-    constructor() public ERC20("Simple Token ERC20", "ST20") {
+    constructor() ERC20("Simple Token ERC20", "ST20") {
         _mint(_msgSender(), 10000 * (10**uint256(decimals())));
     }
 

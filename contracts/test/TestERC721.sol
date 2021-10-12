@@ -11,7 +11,7 @@ contract TestERC721 is Context, ERC721, Ownable {
 
     // address public owner;
 
-    constructor() public ERC721("Simple Token ERC721", "ERC721") {}
+    constructor() ERC721("Simple Token ERC721", "ERC721") {}
 
     function mint(address to, uint256 tokenId) public payable onlyOwner {
         super._safeMint(to, tokenId, "0x");
