@@ -63,8 +63,6 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     address payable public treasury;
 
-    uint256 private constant YEAR_IN_SECONDS = 31556926;
-
     Setting public setting;
 
     constructor(address payable _treasury) {
