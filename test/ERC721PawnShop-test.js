@@ -680,6 +680,73 @@ describe("Greeter", function () {
         balanceLender.add(interestFee)
       );
     });
+
+    it("should apply new fees for next extendTime", async function () {
+
+      // Change fees to 15% and 5%
+      const newLenderFeeRate = 150_000;
+      const newServiceFeeRate = 50_000;
+      await erc721PawnShop.setFee(testERC20.address, newLenderFeeRate, newServiceFeeRate);
+
+      await testERC20
+        .connect(borrower)
+        .approve(erc721PawnShop.address, data.amount);
+      // get lending cycle time to calculate args emitted
+      const offerSetting = await erc721PawnShop.getOfferSetting(
+        data.collection,
+        data.tokenId
+      );
+      const offerParams = await erc721PawnShop.getOfferParams(
+        data.collection,
+        data.tokenId
+      );
+      const extendCycle = 1;
+      const extendLendingPeriod = offerSetting.lendingPerCycle.mul(extendCycle);
+      const liquidationPeriod = offerSetting.liquidationPeriod;
+      const newEndLendingAt = offerParams.endLendingAt.add(extendLendingPeriod);
+      const YEAR_IN_SECONDS = 31556926;
+
+      const lenderFee = extendLendingPeriod
+        .mul(newLenderFeeRate)
+        .div(YEAR_IN_SECONDS)
+        .div(1000000);
+      const serviceFee = extendLendingPeriod
+        .mul(offerParams.borrowAmount)
+        .mul(newServiceFeeRate)
+        .div(YEAR_IN_SECONDS)
+        .div(1000000);
+
+      const balanceTreasury = await testERC20.balanceOf(treasury.address);
+      const balanceLender = await testERC20.balanceOf(lender.address);
+      await expect(
+        erc721PawnShop
+        .connect(borrower)
+        .extendLendingTime(data.collection, data.tokenId, extendCycle)
+      )
+        .to.emit(erc721PawnShop.connect(borrower), "ExtendLendingTimeRequested")
+        .withArgs(
+          data.collection,
+          data.tokenId,
+          newEndLendingAt,
+          newEndLendingAt.add(liquidationPeriod),
+          lenderFee,
+          serviceFee
+        );
+
+      // check fee has been transfer yet
+      expect(await testERC20.balanceOf(treasury.address)).to.eq(
+        balanceTreasury.add(serviceFee)
+      );
+      expect(await testERC20.balanceOf(lender.address)).to.eq(
+        balanceLender.add(lenderFee)
+      );
+      const newOfferSetting = await erc721PawnShop.getOfferSetting(
+        data.collection,
+        data.tokenId
+      );
+      expect(newOfferSetting.lenderFeeRate).to.eq(newLenderFeeRate);
+      expect(newOfferSetting.serviceFeeRate).to.eq(newServiceFeeRate);
+    });
   });
 
   //
@@ -802,7 +869,7 @@ describe("Greeter", function () {
     });
     it("update lender fee and service for USDC successfully", async function () {
       await erc721PawnShop.setFee(testERC20.address, 11000, 2000);
-      const fee = await erc721PawnShop.getFee(testERC20.address);
+      const fee = await erc721PawnShop.getSystemTokenInterestRates(testERC20.address);
       expect(fee.lenderFeeRate).to.eq(11000);
       expect(fee.serviceFeeRate).to.eq(2000);
     });

@@ -8,10 +8,11 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
 import './interfaces/IPawnShop.sol';
 
-contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
+contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
 
     enum State {open, in_progress}
@@ -31,7 +32,6 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         State status;
     }
 
-    // System settings
     struct Fee {
         uint256 lenderFeeRate;
         uint256 serviceFeeRate;
@@ -58,7 +58,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
     //  **/
     mapping(address => mapping(uint256 => Offer)) private offers;
 
-    mapping(address => Fee) private fees;
+    mapping(address => Fee) private _tokenInterestRates;
 
     address payable public treasury;
 
@@ -66,11 +66,19 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
 
     Setting public setting;
 
-    constructor(address payable _treasury) public {
+    constructor(address payable _treasury) {
         setting.auctionPeriod = 259200; // 3 days
         setting.lendingPerCycle = 604800; // 7 days for a cycle
         setting.liquidationPeriod = 2592000; // 30 days
         treasury = _treasury;
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     /**
@@ -108,8 +116,8 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         return offers[_collection][_tokenId].setting;
     }
 
-    function getFee(address _token) public view returns (Fee memory) {
-        return fees[_token];
+    function getSystemTokenInterestRates(address _token) public view returns (Fee memory) {
+        return _tokenInterestRates[_token];
     }
 
     function setAuctionPeriod(uint256 _auctionPeriod) external override onlyOwner {
@@ -133,8 +141,8 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         uint256 _lenderFeeRate,
         uint256 _serviceFeeRate
     ) external override onlyOwner {
-        if (_lenderFeeRate > 0) fees[_token].lenderFeeRate = _lenderFeeRate;
-        if (_serviceFeeRate > 0) fees[_token].serviceFeeRate = _serviceFeeRate;
+        if (_lenderFeeRate > 0) _tokenInterestRates[_token].lenderFeeRate = _lenderFeeRate;
+        if (_serviceFeeRate > 0) _tokenInterestRates[_token].serviceFeeRate = _serviceFeeRate;
     }
 
     function createOffer(
@@ -149,22 +157,17 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
     )
         external
         override
+        whenNotPaused
         nonReentrant
         onlyAmountGreaterThanZero(_amount)
         onlyCycleNoGreaterThanZero(_borrowCycleNo)
     {
         // Validations
-        if (_endTime != 0)
-            require(_endTime >= block.timestamp, "invalid-end-time");
-        require(
-            IERC721(_collection).getApproved(_tokenId) == address(this),
-            "please approve NFT first"
-        );
+        if (_endTime != 0) require(_endTime >= block.timestamp, "invalid-end-time");
+        require(IERC721(_collection).getApproved(_tokenId) == address(this), "please approve NFT first");
         require(_paymentToken != address(0), "invalid-payment-token");
-        require(
-            fees[_paymentToken].lenderFeeRate != 0,
-            "invalid-payment-token"
-        );
+        require(_tokenInterestRates[_paymentToken].lenderFeeRate != 0, "invalid-payment-token");
+
         // Send NFT to this contract to escrow
         IERC721(_collection).transferFrom(msg.sender, address(this), _tokenId);
 
@@ -188,8 +191,8 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         params.startLendingAt = 0;
         params.status = State.open;
         offer.setting = setting;
-        offer.setting.lenderFeeRate = fees[_paymentToken].lenderFeeRate;
-        offer.setting.serviceFeeRate = fees[_paymentToken].serviceFeeRate;
+        offer.setting.lenderFeeRate = _tokenInterestRates[_paymentToken].lenderFeeRate;
+        offer.setting.serviceFeeRate = _tokenInterestRates[_paymentToken].serviceFeeRate;
         offer.params = params;
         offers[_collection][_tokenId] = offer;
 
@@ -210,17 +213,13 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         address _collection,
         uint256 _tokenId,
         uint256 _amount
-    ) external override nonReentrant {
+    ) external whenNotPaused override nonReentrant {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(
-            offer.params.borrowAmount == _amount,
-            "offer amount has changed"
-        );
+        require(offer.params.borrowAmount == _amount, "offer amount has changed");
         require(offer.params.status == State.open, "apply-non-open-offer");
-        if (offer.params.endTime != 0)
-            require(offer.params.endTime >= block.timestamp, "expired-order");
+        if (offer.params.endTime != 0) require(offer.params.endTime >= block.timestamp, "expired-order");
 
         // Update offer informations
         offer.params.status = State.in_progress;
@@ -246,24 +245,14 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
             .borrowAmount
             .sub(interestFee)
             .sub(adminFee);
+
         // Send amount to borrower and fee to admin
-        IERC20(offer.params.paymentToken).transferFrom(
-            msg.sender,
-            offer.params.dest,
-            borrowAmountAfterFee
-        );
-        IERC20(offer.params.paymentToken).transferFrom(
-            msg.sender,
-            treasury,
-            adminFee
-        );
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.dest, borrowAmountAfterFee);
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, adminFee);
+
         // Update end times
-        offer.params.endLendingAt = offer.params.startLendingAt.add(
-            lendingPeriod
-        );
-        offer.params.liquidationAt = offer.params.endLendingAt.add(
-            offer.setting.liquidationPeriod
-        );
+        offer.params.endLendingAt = offer.params.startLendingAt.add(lendingPeriod);
+        offer.params.liquidationAt = offer.params.endLendingAt.add(offer.setting.liquidationPeriod);
 
         emit OfferApplied(_collection, _tokenId, msg.sender);
     }
@@ -277,15 +266,9 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(
-            offer.params.status == State.in_progress,
-            "repay-in-progress-offer-only"
-        );
+        require(offer.params.status == State.in_progress, "repay-in-progress-offer-only");
         require(offer.params.endLendingAt >= block.timestamp, "overdue loan");
-        require(
-            offer.params.owner == msg.sender,
-            "only owner can repay and get NFT"
-        );
+        require(offer.params.owner == msg.sender, "only owner can repay and get NFT");
 
         // Repay token to lender
         IERC20(offer.params.paymentToken).transferFrom(
@@ -309,7 +292,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         address _collection,
         uint256 _tokenId,
         uint256 _amount
-    ) external override onlyAmountGreaterThanZero(_amount) {
+    ) external whenNotPaused override onlyAmountGreaterThanZero(_amount) {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
@@ -325,7 +308,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         emit OfferUpdated(_collection, _tokenId, offer.params.borrowAmount);
     }
 
-    function cancelOffer(address _collection, uint256 _tokenId) external override {
+    function cancelOffer(address _collection, uint256 _tokenId) external whenNotPaused override {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
@@ -353,22 +336,21 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(
-            offer.params.owner == msg.sender,
-            "only-owner-can-extend-lending-time"
-        );
-        require(
-            offer.params.status == State.in_progress,
-            "can only extend in progress offer"
-        );
-        require(
-            offer.params.endLendingAt >= block.timestamp,
-            "lending-time-closed"
-        );
+        require(offer.params.owner == msg.sender, "only-owner-can-extend-lending-time");
+        require(offer.params.status == State.in_progress, "can only extend in progress offer");
+        require(offer.params.endLendingAt >= block.timestamp, "lending-time-closed");
+
+        // Update fees if has changed
+        {
+            uint256 lenderFeeRate = _tokenInterestRates[offer.params.paymentToken].lenderFeeRate;
+            uint256 serviceFeeRate = _tokenInterestRates[offer.params.paymentToken].serviceFeeRate;
+            if (lenderFeeRate != offer.setting.lenderFeeRate) offer.setting.lenderFeeRate = lenderFeeRate;
+            if (serviceFeeRate != offer.setting.serviceFeeRate) offer.setting.serviceFeeRate = serviceFeeRate;
+        }
 
         // Calculate Fees
         uint256 lendingPeriod = extCycleNo.mul(offer.setting.lendingPerCycle);
-        uint256 interestFee = lendingPeriod
+        uint256 lenderFee = lendingPeriod
             .mul(offer.params.borrowAmount)
             .mul(offer.setting.lenderFeeRate)
             .div(YEAR_IN_SECONDS)
@@ -380,31 +362,22 @@ contract ERC721PawnShop is IPawnShop, Ownable, ReentrancyGuard {
             .div(1000000);
 
         // Send amount to borrower and fee to admin
-        IERC20(offer.params.paymentToken).transferFrom(
-            msg.sender,
-            offer.params.lender,
-            interestFee
-        );
-        IERC20(offer.params.paymentToken).transferFrom(
-            msg.sender,
-            treasury,
-            serviceFee
-        );
+        // require(lenderFee > 1, 'lenderFee too small');
+        // require(serviceFee > 1, 'serviceFee too small');
+
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.lender, lenderFee);
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, serviceFee);
 
         // Update end times
-        offer.params.endLendingAt = offer.params.endLendingAt.add(
-            lendingPeriod
-        );
-        offer.params.liquidationAt = offer.params.endLendingAt.add(
-            offer.setting.liquidationPeriod
-        );
+        offer.params.endLendingAt = offer.params.endLendingAt.add(lendingPeriod);
+        offer.params.liquidationAt = offer.params.endLendingAt.add(offer.setting.liquidationPeriod);
 
         emit ExtendLendingTimeRequested(
             _collection,
             _tokenId,
             offer.params.endLendingAt,
             offer.params.liquidationAt,
-            interestFee,
+            lenderFee,
             serviceFee
         );
     }
