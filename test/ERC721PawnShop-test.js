@@ -108,7 +108,7 @@ describe('Greeter', function () {
         )
     })
 
-    it('should raise error when creating offer success with non-approve nft', async function () {
+    it('should raise error when creating offer with non-approve nft', async function () {
       // change approve to make it non approve
       await testERC721.connect(borrower).approve(treasury.address, tokenId)
       await erc721PawnShop
@@ -144,6 +144,25 @@ describe('Greeter', function () {
         )
         .catch((err) => {
           expect(err.message).to.include('Amount must be greater than 0')
+        })
+    })
+
+    it('should failed to create offer with small valid amount which leading fee is zero', async function () {
+      data.amount = 100
+      await erc721PawnShop
+        .connect(borrower)
+        .createOffer(
+          data.collection,
+          data.tokenId,
+          data.dest,
+          data.amount,
+          data.paymentToken,
+          data.borrowCycleNo,
+          data.startTime,
+          data.endTime,
+        )
+        .catch((err) => {
+          expect(err.message).to.include('required minimum lender fee')
         })
     })
 
