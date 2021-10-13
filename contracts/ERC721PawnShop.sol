@@ -166,9 +166,10 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(IERC721(_collection).getApproved(_tokenId) == address(this), "please approve NFT first");
         require(_paymentToken != address(0), "invalid-payment-token");
         require(_tokenInterestRates[_paymentToken].lenderFeeRate != 0, "invalid-payment-token");
+
+        uint256 lendingPeriod = _borrowCycleNo.mul(setting.lendingPerCycle);
         // Prevent Stack too deep error
         {
-            uint256 lendingPeriod = _borrowCycleNo.mul(setting.lendingPerCycle);
             (uint256 lenderFee, uint256 serviceFee) = quoteFees(_amount, _paymentToken, lendingPeriod);
             require(lenderFee > 0, "required minimum lender fee");
             require(serviceFee> 0, "required minimum service fee");
@@ -210,7 +211,8 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             _amount,
             _paymentToken,
             params.startTime,
-            params.endTime
+            params.endTime,
+            lendingPeriod
         );
     }
 
@@ -283,22 +285,27 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     function updateOffer(
         address _collection,
         uint256 _tokenId,
-        uint256 _amount
-    ) external whenNotPaused override onlyAmountGreaterThanZero(_amount) {
+        uint256 _amount,
+        uint256 _borrowCycleNo
+    ) external whenNotPaused override {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
         require(offer.params.owner == msg.sender, "only owner can update offer");
         require(offer.params.lender == address(0), "only update unapply offer");
+
+        // Update offer if has changed?
+        if (_borrowCycleNo > 0) offer.params.borrowCycleNo = _borrowCycleNo;
+        if (_amount > 0) offer.params.borrowAmount = _amount;
+
         uint256 lendingPeriod = offer.params.borrowCycleNo.mul(offer.setting.lendingPerCycle);
-        (uint256 lenderFee, uint256 serviceFee) = quoteFees(_amount, offer.params.paymentToken, lendingPeriod);
+        (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.params.borrowAmount, offer.params.paymentToken, lendingPeriod);
+
+        // Validations
         require(lenderFee > 0, "required minimum lender fee");
         require(serviceFee> 0, "required minimum service fee");
 
-        // Update Offer
-        offer.params.borrowAmount = _amount;
-
-        emit OfferUpdated(_collection, _tokenId, offer.params.borrowAmount);
+        emit OfferUpdated(_collection, _tokenId, offer.params.borrowAmount, lendingPeriod);
     }
 
     function cancelOffer(address _collection, uint256 _tokenId) external whenNotPaused override {

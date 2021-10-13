@@ -17,7 +17,7 @@ interface IPawnShopUserActions {
 
     function repay(address _collection, uint256 _tokenId) external;
 
-    function updateOffer(address _collection, uint256 _tokenId, uint256 _amount) external;
+    function updateOffer(address _collection, uint256 _tokenId, uint256 _amount, uint256 _borrowCycleNo) external;
 
     function cancelOffer(address _collection, uint256 _tokenId) external;
 

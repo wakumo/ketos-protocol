@@ -2,7 +2,7 @@ const { expect } = require('chai')
 const { ethers, network } = require('hardhat')
 const utils = require('../utils/utils.js')
 
-describe('Greeter', function () {
+describe('ERC721 PawnShop', function () {
   let treasury, borrower, lender, addrs
   let testERC20, testERC721, erc721PawnShop
   const tokenId = 1
@@ -19,21 +19,21 @@ describe('Greeter', function () {
     await testERC721.deployed()
     await testERC20.mint(lender.address, utils.convertBig(100 * 10 ** 18))
     await testERC20.mint(borrower.address, utils.convertBig(100 * 10 ** 18))
-    console.log(
-      `balance treasury: ${utils.convertInt(
-        await testERC20.balanceOf(treasury.address),
-      )}`,
-    )
-    console.log(
-      `balance lender: ${utils.convertInt(
-        await testERC20.balanceOf(lender.address),
-      )}`,
-    )
-    console.log(
-      `balance borrower: ${utils.convertInt(
-        await testERC20.balanceOf(borrower.address),
-      )}`,
-    )
+    // console.log(
+    //   `balance treasury: ${utils.convertInt(
+    //     await testERC20.balanceOf(treasury.address),
+    //   )}`,
+    // )
+    // console.log(
+    //   `balance lender: ${utils.convertInt(
+    //     await testERC20.balanceOf(lender.address),
+    //   )}`,
+    // )
+    // console.log(
+    //   `balance borrower: ${utils.convertInt(
+    //     await testERC20.balanceOf(borrower.address),
+    //   )}`,
+    // )
   })
 
   beforeEach(async function () {
@@ -61,14 +61,6 @@ describe('Greeter', function () {
 
   afterEach(async function () {
     await testERC721.burn(tokenId).catch((err) => {})
-  })
-
-  it("Should return the new greeting once it's changed", async function () {
-    expect(await erc721PawnShop.treasury()).to.equal(treasury.address)
-
-    const setting = await erc721PawnShop.setting()
-
-    expect(setting.auctionPeriod).to.equal(ethers.BigNumber.from('259200'))
   })
 
   //
@@ -105,6 +97,7 @@ describe('Greeter', function () {
           data.paymentToken,
           utils.convertBig(data.startTime),
           utils.convertBig(data.endTime),
+          utils.convertBig(604800),
         )
     })
 
@@ -274,7 +267,7 @@ describe('Greeter', function () {
       // update change amount
       await erc721PawnShop
         .connect(borrower)
-        .updateOffer(data.collection, data.tokenId, data.amount * 2)
+        .updateOffer(data.collection, data.tokenId, data.amount * 2, 0)
       await erc721PawnShop
         .connect(lender)
         .applyOffer(data.collection, data.tokenId, data.amount)
@@ -488,7 +481,7 @@ describe('Greeter', function () {
 
     it('only borrower can update offer', async function () {
       await erc721PawnShop
-        .updateOffer(data.collection, data.tokenId, data.amount)
+        .updateOffer(data.collection, data.tokenId, data.amount, 0)
         .catch((err) => {
           expect(err.message).to.include('only owner can update offer')
         })
@@ -503,7 +496,7 @@ describe('Greeter', function () {
         .applyOffer(data.collection, data.tokenId, data.amount)
       await erc721PawnShop
         .connect(borrower)
-        .updateOffer(data.collection, data.tokenId, data.amount)
+        .updateOffer(data.collection, data.tokenId, data.amount, 0)
         .catch((err) => {
           expect(err.message).to.include('only update unapply offer')
         })
@@ -512,20 +505,20 @@ describe('Greeter', function () {
     it('should raise when updating invalid amount', async function () {
       await erc721PawnShop
         .connect(borrower)
-        .updateOffer(data.collection, data.tokenId, 0)
+        .updateOffer(data.collection, data.tokenId, 0, 0)
         .catch((err) => {
           expect(err.message).to.include('Amount must be greater than 0')
         })
     })
 
-    it('should update success', async function () {
+    it('should update amount successfully and no change borrowCycleNo', async function () {
       await expect(
         erc721PawnShop
           .connect(borrower)
-          .updateOffer(data.collection, data.tokenId, data.amount * 2),
+          .updateOffer(data.collection, data.tokenId, data.amount * 2, 0),
       )
         .to.emit(erc721PawnShop.connect(borrower), 'OfferUpdated')
-        .withArgs(data.collection, data.tokenId, data.amount * 2)
+        .withArgs(data.collection, data.tokenId, data.amount * 2, 604800)
 
       // check amount
       const offer = await erc721PawnShop.getOfferParams(
@@ -533,6 +526,43 @@ describe('Greeter', function () {
         data.tokenId,
       )
       expect(offer.borrowAmount).to.eq(utils.convertBig(data.amount * 2))
+      expect(offer.borrowCycleNo).to.eq(1);
+    })
+
+    it('should update borrowCycleNo successfully and no change amount', async function () {
+      await expect(
+        erc721PawnShop
+          .connect(borrower)
+          .updateOffer(data.collection, data.tokenId, 0, 2),
+      )
+        .to.emit(erc721PawnShop.connect(borrower), 'OfferUpdated')
+        .withArgs(data.collection, data.tokenId, data.amount, 604800 * 2)
+
+      // check amount
+      const offer = await erc721PawnShop.getOfferParams(
+        data.collection,
+        data.tokenId,
+      )
+      expect(offer.borrowAmount).to.eq(utils.convertBig(data.amount))
+      expect(offer.borrowCycleNo).to.eq(2);
+    })
+
+    it('should update borrowCycleNo successfully and no change amount', async function () {
+      await expect(
+        erc721PawnShop
+        .connect(borrower)
+        .updateOffer(data.collection, data.tokenId, data.amount * 2, 2),
+      )
+        .to.emit(erc721PawnShop.connect(borrower), 'OfferUpdated')
+        .withArgs(data.collection, data.tokenId, data.amount * 2, 604800 * 2)
+
+      // check amount
+      const offer = await erc721PawnShop.getOfferParams(
+        data.collection,
+        data.tokenId,
+      )
+      expect(offer.borrowAmount).to.eq(utils.convertBig(data.amount * 2))
+      expect(offer.borrowCycleNo).to.eq(2);
     })
   })
 
