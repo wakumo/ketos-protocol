@@ -11,6 +11,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
 import './interfaces/IPawnShop.sol';
+import './libraries/PawnShopLibrary.sol';
 
 contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -50,19 +51,17 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         Setting setting;
     }
 
-    // /**
-    //  * Make it private to avoid stack too deep errors
-    //  * Struct over 15 fields can't return in getters
-    //  *
-    //  * Split getter function out to getOfferParams() and getOfferSetting()
-    //  **/
+    /**
+     * @dev Make it private to avoid stack too deep errors
+     * Struct over 15 fields can't return in getters
+     *
+     * Split getter function out to getOfferParams() and getOfferSetting()
+     **/
     mapping(address => mapping(uint256 => Offer)) private offers;
 
     mapping(address => Fee) private _tokenInterestRates;
 
     address payable public treasury;
-
-    uint256 private constant YEAR_IN_SECONDS = 31556926;
 
     Setting public setting;
 
@@ -227,28 +226,14 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         offer.params.startLendingAt = block.timestamp;
 
         // Calculate Fees
-        uint256 lendingPeriod = offer.params.borrowCycleNo.mul(
-            offer.setting.lendingPerCycle
-        );
-        uint256 interestFee = lendingPeriod
-            .mul(offer.params.borrowAmount)
-            .mul(offer.setting.lenderFeeRate)
-            .div(YEAR_IN_SECONDS)
-            .div(1000000);
-        uint256 adminFee = lendingPeriod
-            .mul(offer.params.borrowAmount)
-            .mul(offer.setting.serviceFeeRate)
-            .div(YEAR_IN_SECONDS)
-            .div(1000000);
-        uint256 borrowAmountAfterFee = offer
-            .params
-            .borrowAmount
-            .sub(interestFee)
-            .sub(adminFee);
+        uint256 lendingPeriod = offer.params.borrowCycleNo.mul(offer.setting.lendingPerCycle);
+        uint256 lenderFee = PawnShopLibrary.getFeeAmount(offer.params.borrowAmount, offer.setting.lenderFeeRate, lendingPeriod);
+        uint256 serviceFee = PawnShopLibrary.getFeeAmount(offer.params.borrowAmount, offer.setting.serviceFeeRate, lendingPeriod);
+        uint256 borrowAmountAfterFee = offer.params.borrowAmount.sub(lenderFee).sub(serviceFee);
 
         // Send amount to borrower and fee to admin
         IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.dest, borrowAmountAfterFee);
-        IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, adminFee);
+        IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, serviceFee);
 
         // Update end times
         offer.params.endLendingAt = offer.params.startLendingAt.add(lendingPeriod);
@@ -327,6 +312,29 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         emit OfferCancelled(_collection, _tokenId);
     }
 
+    // Borrower call this function to estimate how much fees need to paid to extendTimes
+    function getFeeAmountsNeedToExtendTime(address _collection, uint256 _tokenId, uint256 _extCycleNo)
+        external
+        view
+        returns (uint256, uint256)
+    {
+        Offer memory offer = offers[_collection][_tokenId];
+        uint256 lendingPeriod = _extCycleNo.mul(offer.setting.lendingPerCycle);
+
+        uint256 lenderFee = PawnShopLibrary.getFeeAmount(
+            offer.params.borrowAmount,
+            _tokenInterestRates[offer.params.paymentToken].lenderFeeRate,
+            lendingPeriod
+        );
+        uint256 serviceFee = PawnShopLibrary.getFeeAmount(
+            offer.params.borrowAmount,
+            _tokenInterestRates[offer.params.paymentToken].serviceFeeRate,
+            lendingPeriod
+        );
+
+        return (lenderFee, serviceFee);
+    }
+
     // Borrower interest only and extend deadline
     function extendLendingTime(
         address _collection,
@@ -350,16 +358,8 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
         // Calculate Fees
         uint256 lendingPeriod = extCycleNo.mul(offer.setting.lendingPerCycle);
-        uint256 lenderFee = lendingPeriod
-            .mul(offer.params.borrowAmount)
-            .mul(offer.setting.lenderFeeRate)
-            .div(YEAR_IN_SECONDS)
-            .div(1000000);
-        uint256 serviceFee = lendingPeriod
-            .mul(offer.params.borrowAmount)
-            .mul(offer.setting.serviceFeeRate)
-            .div(YEAR_IN_SECONDS)
-            .div(1000000);
+        uint256 lenderFee = PawnShopLibrary.getFeeAmount(offer.params.borrowAmount, offer.setting.lenderFeeRate, lendingPeriod);
+        uint256 serviceFee = PawnShopLibrary.getFeeAmount(offer.params.borrowAmount, offer.setting.serviceFeeRate, lendingPeriod);
 
         // Send amount to borrower and fee to admin
         // require(lenderFee > 1, 'lenderFee too small');
@@ -396,10 +396,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(
-            block.timestamp > offer.params.endLendingAt,
-            "can not claim in lending period"
-        );
+        require(block.timestamp > offer.params.endLendingAt, "can not claim in lending period");
         if (block.timestamp <= offer.params.liquidationAt)
             require(
                 offer.params.lender == msg.sender,
@@ -448,10 +445,7 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         uint256 _min,
         uint256 _amount
     ) internal pure {
-        require(
-            _amount >= _min,
-            "Min amount must be greatr than or equal expected amount"
-        );
+        require(_amount >= _min, "Min amount must be greatr than or equal expected amount");
     }
 
     // Function for test
