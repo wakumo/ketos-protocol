@@ -25,9 +25,9 @@ interface IPawnShopUserActions {
 
     function claim(address _collection, uint256 _tokenId) external;
 
-    function quoteFees(uint256 _borrowAmount, address _token, uint256 _lendingPeriod) external view returns (uint256, uint256);
+    function quoteFees(uint256 _borrowAmount, address _token, uint256 _lendingPeriod) external view returns (uint256 lenderFee, uint256 serviceFee);
 
-    function quoteExtendFees(address _collection, uint256 _tokenId, uint256 _extCycleNo) external view returns (uint256, uint256);
+    function quoteExtendFees(address _collection, uint256 _tokenId, uint256 _extCycleNo) external view returns (uint256 lenderFee, uint256 serviceFee);
 
-    function quoteApplyAmounts(address _collection, uint256 _tokenId) external view returns (uint256, uint256, uint256);
+    function quoteApplyAmounts(address _collection, uint256 _tokenId) external view returns (uint256 lenderFee, uint256 serviceFee, uint256 approvedAmount);
 }
