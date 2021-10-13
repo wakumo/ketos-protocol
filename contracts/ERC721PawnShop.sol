@@ -166,6 +166,13 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(IERC721(_collection).getApproved(_tokenId) == address(this), "please approve NFT first");
         require(_paymentToken != address(0), "invalid-payment-token");
         require(_tokenInterestRates[_paymentToken].lenderFeeRate != 0, "invalid-payment-token");
+        // Prevent Stack too deep error
+        {
+            uint256 lendingPeriod = _borrowCycleNo.mul(setting.lendingPerCycle);
+            (uint256 lenderFee, uint256 serviceFee) = quoteFees(_amount, _paymentToken, lendingPeriod);
+            require(lenderFee > 0, "required minimum lender fee");
+            require(serviceFee> 0, "required minimum service fee");
+        }
 
         // Send NFT to this contract to escrow
         IERC721(_collection).transferFrom(msg.sender, address(this), _tokenId);
@@ -281,11 +288,12 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         Offer storage offer = offers[_collection][_tokenId];
 
         // Validations
-        require(
-            offer.params.owner == msg.sender,
-            "only owner can update offer"
-        );
+        require(offer.params.owner == msg.sender, "only owner can update offer");
         require(offer.params.lender == address(0), "only update unapply offer");
+        uint256 lendingPeriod = offer.params.borrowCycleNo.mul(offer.setting.lendingPerCycle);
+        (uint256 lenderFee, uint256 serviceFee) = quoteFees(_amount, offer.params.paymentToken, lendingPeriod);
+        require(lenderFee > 0, "required minimum lender fee");
+        require(serviceFee> 0, "required minimum service fee");
 
         // Update Offer
         offer.params.borrowAmount = _amount;
@@ -312,27 +320,46 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         emit OfferCancelled(_collection, _tokenId);
     }
 
-    // Borrower call this function to estimate how much fees need to paid to extendTimes
-    function getFeeAmountsNeedToExtendTime(address _collection, uint256 _tokenId, uint256 _extCycleNo)
-        external
+    //
+    // @dev
+    // Borrower can know how much they can receive before creating offer
+    //
+    function quoteFees(uint256 _borrowAmount, address _token, uint256 _lendingPeriod)
+        public
+        override
         view
-        returns (uint256, uint256)
+        returns (uint256 lenderFee, uint256 serviceFee)
+    {
+        lenderFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _tokenInterestRates[_token].lenderFeeRate, _lendingPeriod);
+        serviceFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _tokenInterestRates[_token].serviceFeeRate, _lendingPeriod);
+    }
+
+    // Borrower call this function to estimate how much fees need to paid to extendTimes
+    function quoteExtendFees(address _collection, uint256 _tokenId, uint256 _extCycleNo)
+        public
+        override
+        view
+        returns (uint256 lenderFee, uint256 serviceFee)
     {
         Offer memory offer = offers[_collection][_tokenId];
         uint256 lendingPeriod = _extCycleNo.mul(offer.setting.lendingPerCycle);
+        (lenderFee, serviceFee) = quoteFees(offer.params.borrowAmount, offer.params.paymentToken, lendingPeriod);
+    }
 
-        uint256 lenderFee = PawnShopLibrary.getFeeAmount(
-            offer.params.borrowAmount,
-            _tokenInterestRates[offer.params.paymentToken].lenderFeeRate,
-            lendingPeriod
-        );
-        uint256 serviceFee = PawnShopLibrary.getFeeAmount(
-            offer.params.borrowAmount,
-            _tokenInterestRates[offer.params.paymentToken].serviceFeeRate,
-            lendingPeriod
-        );
-
-        return (lenderFee, serviceFee);
+    //
+    // @dev
+    // approvedAmount: Token amount lender need to approved to take this offer
+    //
+    function quoteApplyAmounts(address _collection, uint256 _tokenId)
+        external
+        override
+        view
+        returns (uint256 lenderFee, uint256 serviceFee, uint256 approvedAmount)
+    {
+        Offer memory offer = offers[_collection][_tokenId];
+        uint256 lendingPeriod = offer.params.borrowCycleNo.mul(offer.setting.lendingPerCycle);
+        (lenderFee, serviceFee) = quoteFees(offer.params.borrowAmount, offer.params.paymentToken, lendingPeriod);
+        approvedAmount = offer.params.borrowAmount.sub(lenderFee);
     }
 
     // Borrower interest only and extend deadline
@@ -360,10 +387,8 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         uint256 lendingPeriod = extCycleNo.mul(offer.setting.lendingPerCycle);
         uint256 lenderFee = PawnShopLibrary.getFeeAmount(offer.params.borrowAmount, offer.setting.lenderFeeRate, lendingPeriod);
         uint256 serviceFee = PawnShopLibrary.getFeeAmount(offer.params.borrowAmount, offer.setting.serviceFeeRate, lendingPeriod);
-
-        // Send amount to borrower and fee to admin
-        // require(lenderFee > 1, 'lenderFee too small');
-        // require(serviceFee > 1, 'serviceFee too small');
+        require(lenderFee > 0, "required minimum lender fee");
+        require(serviceFee > 0, "required minimum service fee");
 
         IERC20(offer.params.paymentToken).transferFrom(msg.sender, offer.params.lender, lenderFee);
         IERC20(offer.params.paymentToken).transferFrom(msg.sender, treasury, serviceFee);

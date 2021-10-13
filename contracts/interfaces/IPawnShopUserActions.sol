@@ -24,4 +24,10 @@ interface IPawnShopUserActions {
     function extendLendingTime(address _collection, uint256 _tokenId, uint256 extCycleNo) external;
 
     function claim(address _collection, uint256 _tokenId) external;
+
+    function quoteFees(uint256 _borrowAmount, address _token, uint256 _lendingPeriod) external returns (uint256, uint256);
+
+    function quoteExtendFees(address _collection, uint256 _tokenId, uint256 _extCycleNo) external returns (uint256, uint256);
+
+    function quoteApplyAmounts(address _collection, uint256 _tokenId) external returns (uint256, uint256, uint256);
 }
