@@ -43,7 +43,7 @@ describe('ERC721 PawnShop', function () {
     // set fee
     await erc721PawnShop.setFee(testERC20.address, 100000, 20000) // 10% & 2%
     // let currentTime = utils.convertInt(await network.provider.send("evm_mine"));
-    let currentTime = Math.round(Date.now() / 1000)
+    const currentTime = utils.convertInt(await erc721PawnShop.currentTime())
     data = {
       collection: testERC721.address,
       tokenId: tokenId,
@@ -526,7 +526,7 @@ describe('ERC721 PawnShop', function () {
         data.tokenId,
       )
       expect(offer.borrowAmount).to.eq(utils.convertBig(data.amount * 2))
-      expect(offer.borrowCycleNo).to.eq(1);
+      expect(offer.borrowCycleNo).to.eq(1)
     })
 
     it('should update borrowCycleNo successfully and no change amount', async function () {
@@ -544,14 +544,14 @@ describe('ERC721 PawnShop', function () {
         data.tokenId,
       )
       expect(offer.borrowAmount).to.eq(utils.convertBig(data.amount))
-      expect(offer.borrowCycleNo).to.eq(2);
+      expect(offer.borrowCycleNo).to.eq(2)
     })
 
     it('should update borrowCycleNo successfully and no change amount', async function () {
       await expect(
         erc721PawnShop
-        .connect(borrower)
-        .updateOffer(data.collection, data.tokenId, data.amount * 2, 2),
+          .connect(borrower)
+          .updateOffer(data.collection, data.tokenId, data.amount * 2, 2),
       )
         .to.emit(erc721PawnShop.connect(borrower), 'OfferUpdated')
         .withArgs(data.collection, data.tokenId, data.amount * 2, 604800 * 2)
@@ -562,7 +562,7 @@ describe('ERC721 PawnShop', function () {
         data.tokenId,
       )
       expect(offer.borrowAmount).to.eq(utils.convertBig(data.amount * 2))
-      expect(offer.borrowCycleNo).to.eq(2);
+      expect(offer.borrowCycleNo).to.eq(2)
     })
   })
 

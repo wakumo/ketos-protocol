@@ -44,7 +44,7 @@ describe('ERC1155 PawnShop', function () {
     // set fee
     await erc1155PawnShop.setFee(testERC20.address, 100000, 20000) // 10% & 2%
     // let currentTime = utils.convertInt(await network.provider.send("evm_mine"));
-    let currentTime = Math.round(Date.now() / 1000)
+    const currentTime = utils.convertInt(await erc1155PawnShop.currentTime())
     data = {
       collection: testERC1155.address,
       tokenId: tokenId,
