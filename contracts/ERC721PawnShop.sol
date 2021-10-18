@@ -16,59 +16,38 @@ import './libraries/PawnShopLibrary.sol';
 contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
 
-    enum State {open, in_progress}
-
-    struct OfferParams {
-        address owner;
-        address lender;
-        uint256 borrowAmount;
-        address paymentToken;
-        address dest;
-        uint256 startTime;
-        uint256 endTime;
-        uint256 borrowCycleNo;
-        uint256 startLendingAt;
-        uint256 endLendingAt;
-        uint256 liquidationAt;
-        State status;
-    }
-
-    struct Fee {
-        uint256 lenderFeeRate;
-        uint256 serviceFeeRate;
-    }
-
-    struct Setting {
-        uint256 auctionPeriod;
-        uint256 lendingPerCycle;
-        uint256 liquidationPeriod;
+    struct FeeRate {
         uint256 lenderFeeRate;
         uint256 serviceFeeRate;
     }
 
     struct Offer {
-        OfferParams params;
-        Setting setting;
+        address owner;
+        address lender;
+        address borrowAmount;
+        address borrowToken;
+        address to;
+        uint256 startApplyAt;
+        uint256 closeApplyAt;
+        uint256 startLendingAt;
+        uint256 borrowPeriod;
+        uint256 liquidationAt;
+        uint256 lenderFeeRate;
+        uint256 serviceFeeRate;
+        uint256 nftType;
+        uint256 nftAmount;
+        bool    isLending
     }
 
-    /**
-     * @dev Make it private to avoid stack too deep errors
-     * Struct over 15 fields can't return in getters
-     *
-     * Split getter function out to getOfferParams() and getOfferSetting()
-     **/
     mapping(address => mapping(uint256 => Offer)) private offers;
 
-    mapping(address => Fee) private _tokenInterestRates;
+    mapping(address => FeeRate) private _tokenFeeRates;
 
     address payable public treasury;
 
-    Setting public setting;
+    uint256 public const LIQUIDATION_PERIOD_IN_SECONDS = 2592000;
 
     constructor(address payable _treasury) {
-        setting.auctionPeriod = 259200; // 3 days
-        setting.lendingPerCycle = 604800; // 7 days for a cycle
-        setting.liquidationPeriod = 2592000; // 30 days
         treasury = _treasury;
     }
 
@@ -91,129 +70,90 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @dev functions affected by this modifier can only be invoked if the provided cycleNo input parameter
-     * is not zero.
-     **/
+    * @dev functions affected by this modifier can only be invoked if the provided cycleNo input parameter
+    * is not zero.
+    **/
     modifier onlyCycleNoGreaterThanZero(uint256 _cycleNo) {
         requireCycleNoGreaterThanZero(_cycleNo);
         _;
     }
 
-    function getOfferParams(address _collection, uint256 _tokenId)
-        external
-        view
-        returns (OfferParams memory)
-    {
-        return offers[_collection][_tokenId].params;
+    function getSystemTokenFeeRates(address _token) external view returns (Fee memory) {
+        return _tokenFeeRates[_token];
     }
 
-    function getOfferSetting(address _collection, uint256 _tokenId)
-        external
-        view
-        returns (Setting memory)
-    {
-        return offers[_collection][_tokenId].setting;
-    }
-
-    function getSystemTokenInterestRates(address _token) public view returns (Fee memory) {
-        return _tokenInterestRates[_token];
-    }
-
-    function setAuctionPeriod(uint256 _auctionPeriod) external override onlyOwner {
-        setting.auctionPeriod = _auctionPeriod;
-    }
-
-    function setLendingPerCycle(uint256 _lendingPerCycle) external override onlyOwner {
-        setting.lendingPerCycle = _lendingPerCycle;
-    }
-
-    function setLiquidationPeriod(uint256 _liquidationPeriod)
-        external
-        override
-        onlyOwner
-    {
-        setting.liquidationPeriod = _liquidationPeriod;
-    }
-
-    function setFee(
+    function setTokenFeeRates(
         address _token,
         uint256 _lenderFeeRate,
         uint256 _serviceFeeRate
     ) external override onlyOwner {
-        if (_lenderFeeRate > 0) _tokenInterestRates[_token].lenderFeeRate = _lenderFeeRate;
-        if (_serviceFeeRate > 0) _tokenInterestRates[_token].serviceFeeRate = _serviceFeeRate;
+        if (_lenderFeeRate > 0) _tokenFeeRates[_token].lenderFeeRate = _lenderFeeRate;
+        if (_serviceFeeRate > 0) _tokenFeeRates[_token].serviceFeeRate = _serviceFeeRate;
     }
 
-    function createOffer(
+    function createOffer721(
         address _collection,
         uint256 _tokenId,
-        address _dest,
-        uint256 _amount,
-        address _paymentToken,
-        uint256 _borrowCycleNo,
-        uint256 _startTime,
-        uint256 _endTime
+        address _to,
+        uint256 _borrowAmount,
+        address _borrowToken,
+        uint256 _borrowPeriod,
+        uint256 _startApplyAt,
+        uint256 _closeApplyAt
     )
         external
         override
         whenNotPaused
         nonReentrant
-        onlyAmountGreaterThanZero(_amount)
-        onlyCycleNoGreaterThanZero(_borrowCycleNo)
+        onlyAmountGreaterThanZero(_borrowAmount)
+        onlyCycleNoGreaterThanZero(_borrowPeriod)
     {
-        // Validations
-        if (_endTime != 0) require(_endTime >= block.timestamp, "invalid-end-time");
-        require(IERC721(_collection).getApproved(_tokenId) == address(this), "please approve NFT first");
-        require(_paymentToken != address(0), "invalid-payment-token");
-        require(_tokenInterestRates[_paymentToken].lenderFeeRate != 0, "invalid-payment-token");
+        // // Validations
+        // if (_closeApplyAt != 0) require(_closeApplyAt >= block.timestamp, "invalid closed-apply time");
+        // require(IERC721(_collection).getApproved(_tokenId) == address(this), "please approve NFT first");
+        // require(_borrowToken != address(0), "invalid-payment-token");
+        // require(_tokenInterestRates[_borrowToken].lenderFeeRate != 0, "invalid-payment-token");
 
-        uint256 lendingPeriod = _borrowCycleNo.mul(setting.lendingPerCycle);
-        // Prevent Stack too deep error
-        {
-            (uint256 lenderFee, uint256 serviceFee) = quoteFees(_amount, _paymentToken, lendingPeriod);
-            require(lenderFee > 0, "required minimum lender fee");
-            require(serviceFee> 0, "required minimum service fee");
-        }
+        // {
+        //     (uint256 lenderFee, uint256 serviceFee) = quoteFees(_borrowAmount, _borrowToken, _borrowPeriod);
+        //     require(lenderFee > 0, "required minimum lender fee");
+        //     require(serviceFee> 0, "required minimum service fee");
+        // }
 
-        // Send NFT to this contract to escrow
-        IERC721(_collection).transferFrom(msg.sender, address(this), _tokenId);
+        // // Send NFT to this contract to escrow
+        // IERC721(_collection).transferFrom(msg.sender, address(this), _tokenId);
 
-        // Init offer
-        Offer memory offer;
-        OfferParams memory params;
+        // // Init offer
+        // Offer memory offer;
 
-        // Set offer informations
-        params.owner = msg.sender;
-        params.lender = address(0);
-        params.borrowAmount = _amount;
-        params.paymentToken = _paymentToken;
-        params.dest = _dest;
-        params.borrowCycleNo = _borrowCycleNo;
-        if (_startTime == 0) {
-            params.startTime = block.timestamp;
-        } else {
-            params.startTime = _startTime;
-        }
-        params.endTime = _endTime;
-        params.startLendingAt = 0;
-        params.status = State.open;
-        offer.setting = setting;
-        offer.setting.lenderFeeRate = _tokenInterestRates[_paymentToken].lenderFeeRate;
-        offer.setting.serviceFeeRate = _tokenInterestRates[_paymentToken].serviceFeeRate;
-        offer.params = params;
-        offers[_collection][_tokenId] = offer;
+        // // Set offer informations
+        // offer.owner = msg.sender;
+        // offer.lender = address(0);
+        // offer.borrowAmount = _amount;
+        // offer.borrowToken = _borrowToken;
+        // offer.to = _to;
+        // offer.startApplyAt = _startApplyAt;
+        // if (offer.startApplyAt == 0) offer.startApplyAt = block.timestamp;
+        // offer.closeApplyAt = _closeApplyAt;
+        // offer.startLendingAt = 0;
+        // params.status = State.open;
+        // offer.setting = setting;
+        // offer.setting.lenderFeeRate = _tokenInterestRates[_paymentToken].lenderFeeRate;
+        // offer.setting.serviceFeeRate = _tokenInterestRates[_paymentToken].serviceFeeRate;
+        // offer.params = params;
+        // offers[_collection][_tokenId] = offer;
 
-        emit OfferCreated(
-            _collection,
-            _tokenId,
-            msg.sender,
-            _dest,
-            _amount,
-            _paymentToken,
-            params.startTime,
-            params.endTime,
-            lendingPeriod
-        );
+        // emit OfferCreated(
+        //     _collection,
+        //     _tokenId,
+        //     msg.sender,
+        //     _dest,
+        //     _amount,
+        //     _paymentToken,
+        //     params.startTime,
+        //     params.endTime,
+        //     _duration
+        // );
     }
 
     // Lender call this function to accepted the offer immediately
@@ -253,9 +193,9 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     // Borrower pay
     function repay(address _collection, uint256 _tokenId)
-        external
-        override
-        nonReentrant
+    external
+    override
+    nonReentrant
     {
         Offer storage offer = offers[_collection][_tokenId];
 
@@ -332,10 +272,10 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     // Borrower can know how much they can receive before creating offer
     //
     function quoteFees(uint256 _borrowAmount, address _token, uint256 _lendingPeriod)
-        public
-        override
-        view
-        returns (uint256 lenderFee, uint256 serviceFee)
+    public
+    override
+    view
+    returns (uint256 lenderFee, uint256 serviceFee)
     {
         lenderFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _tokenInterestRates[_token].lenderFeeRate, _lendingPeriod);
         serviceFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _tokenInterestRates[_token].serviceFeeRate, _lendingPeriod);
@@ -343,10 +283,10 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     // Borrower call this function to estimate how much fees need to paid to extendTimes
     function quoteExtendFees(address _collection, uint256 _tokenId, uint256 _extCycleNo)
-        public
-        override
-        view
-        returns (uint256 lenderFee, uint256 serviceFee)
+    public
+    override
+    view
+    returns (uint256 lenderFee, uint256 serviceFee)
     {
         Offer memory offer = offers[_collection][_tokenId];
         uint256 lendingPeriod = _extCycleNo.mul(offer.setting.lendingPerCycle);
@@ -358,10 +298,10 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     // approvedAmount: Token amount lender need to approved to take this offer
     //
     function quoteApplyAmounts(address _collection, uint256 _tokenId)
-        external
-        override
-        view
-        returns (uint256 lenderFee, uint256 serviceFee, uint256 approvedAmount)
+    external
+    override
+    view
+    returns (uint256 lenderFee, uint256 serviceFee, uint256 approvedAmount)
     {
         Offer memory offer = offers[_collection][_tokenId];
         uint256 lendingPeriod = offer.params.borrowCycleNo.mul(offer.setting.lendingPerCycle);
@@ -421,9 +361,9 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
      *
      **/
     function claim(address _collection, uint256 _tokenId)
-        external
-        override
-        nonReentrant
+    external
+    override
+    nonReentrant
     {
         Offer storage offer = offers[_collection][_tokenId];
 
@@ -432,40 +372,40 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         if (block.timestamp <= offer.params.liquidationAt)
             require(
                 offer.params.lender == msg.sender,
-                "only lender can claim NFT at this time"
+            "only lender can claim NFT at this time"
             );
-        require(
-            (msg.sender == treasury) ||
+            require(
+                (msg.sender == treasury) ||
                 (msg.sender == offer.params.lender) ||
                 (msg.sender == offer.params.owner),
-            "invalid-address"
-        );
-        // Send NFT to taker
-        IERC721(_collection).transferFrom(address(this), msg.sender, _tokenId);
+                "invalid-address"
+            );
+            // Send NFT to taker
+            IERC721(_collection).transferFrom(address(this), msg.sender, _tokenId);
 
-        // Clear offer
-        clearOffer(_collection, _tokenId);
+            // Clear offer
+            clearOffer(_collection, _tokenId);
 
-        emit NFTClaim(_collection, _tokenId, msg.sender);
+            emit NFTClaim(_collection, _tokenId, msg.sender);
     }
 
     /**
-     * Clear to allow borrower can createOffer again
-     **/
+    * Clear to allow borrower can createOffer again
+    **/
     function clearOffer(address _collection, uint256 _tokenId) internal {
         delete offers[_collection][_tokenId];
     }
 
     /**
-     * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
-     **/
+    * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
+    **/
     function requireAmountGreaterThanZero(uint256 _amount) internal pure {
         require(_amount > 0, "Amount must be greater than 0");
     }
 
     /**
-     * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
-     **/
+    * @notice internal function to save on code size for the onlyAmountGreaterThanZero modifier
+    **/
     function requireCycleNoGreaterThanZero(uint256 _cycleNo) internal pure {
         require(_cycleNo >= 1, "Cycle number must be greater than or equal 1");
     }
@@ -484,4 +424,4 @@ contract ERC721PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     function currentTime() public view returns (uint256) {
         return block.timestamp;
     }
-}
+    }
