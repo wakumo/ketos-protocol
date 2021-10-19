@@ -3,24 +3,29 @@ pragma solidity ^0.8.0;
 interface IPawnShopEvents {
 
     event OfferCreated(
-        address indexed _collection,
-        uint256 indexed _tokenId,
+        bytes16 indexed _offerId,
+        address _collection,
+        uint256 _tokenId,
         address _owner,
-        address _dest,
+        address _to,
         uint256 _amount,
-        address _paymentToken,
-        uint256 _startTime,
-        uint256 _endTime,
-        uint256 _lendingPeriod
+        address _borrowToken,
+        uint256 _startApplyAt,
+        uint256 _closeApplyAt,
+        uint256 _borrowPeriod,
+        uint256 _nftType,
+        uint256 _nftAmount
     );
 
     event OfferApplied(
+        bytes16 indexed _offerId,
         address indexed _collection,
         uint256 indexed _tokenId,
         address _lender
     );
 
     event Repay(
+        bytes16 indexed _offerId,
         address indexed _collection,
         uint256 indexed _tokenId,
         address _repayer,
@@ -28,15 +33,17 @@ interface IPawnShopEvents {
     );
 
     event OfferUpdated(
+        bytes16 indexed _offerId,
         address indexed _collection,
         uint256 indexed _tokenId,
         uint256 _amount,
         uint256 _lendingPeriod
     );
 
-    event OfferCancelled(address indexed _collection, uint256 indexed _tokenId);
+    event OfferCancelled(bytes16 indexed _offerId, address indexed _collection, uint256 indexed _tokenId);
 
     event ExtendLendingTimeRequested(
+        bytes16 indexed _offerId,
         address indexed _collection,
         uint256 indexed _tokenId,
         uint256 _lendingEndAt,
@@ -46,6 +53,7 @@ interface IPawnShopEvents {
     );
 
     event NFTClaim(
+        bytes16 indexed _offerId,
         address indexed _collection,
         uint256 indexed _tokenId,
         address _taker
