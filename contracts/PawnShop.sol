@@ -184,7 +184,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         }
 
         // Init offer
-        Offer memory offer;
+        Offer storage offer = offers[_offerId];
 
         // Set offer informations
         offer.owner = msg.sender;
@@ -201,22 +201,21 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         offer.serviceFeeRate = _tokenFeeRates[_borrowToken].serviceFeeRate;
         offer.nftType = _nftType;
         offer.nftAmount = _nftAmount;
-        offers[_offerId] = offer;
 
         // Emit event
         emit OfferCreated(
             _offerId,
-            _collection,
-            _tokenId,
+            offer.collection,
+            offer.tokenId,
             msg.sender,
-            _to,
-            _borrowAmount,
-            _borrowToken,
-            _startApplyAt,
-            _closeApplyAt,
-            _borrowPeriod,
-            _nftType,
-            _nftAmount
+            offer.to,
+            offer.borrowAmount,
+            offer.borrowToken,
+            offer.startApplyAt,
+            offer.closeApplyAt,
+            offer.borrowPeriod,
+            offer.nftType,
+            offer.nftAmount
         );
     }
     // Lender call this function to accepted the offer immediately
