@@ -892,4 +892,87 @@ describe('ERC1155 PawnShop', function () {
       expect(offer.serviceFeeRate).to.not.eq(2000)
     })
   })
+
+  describe('Quote Fees', async function () {
+    it('quoteFees', async function () {
+      const borrowAmount = utils.convertBig(100 * 10 ** 6);
+      const token = testERC20.address;
+      const lendingPeriod = 604800; // 7 days
+      let lenderFee;
+      let serviceFee;
+      [lenderFee, serviceFee] = await pawnShop.connect(borrower).quoteFees(borrowAmount, token, lendingPeriod);
+      expect(lenderFee.toString()).to.eq('191653')
+      expect(serviceFee.toString()).to.eq('38330')
+    })
+
+    it('quoteApplyAmounts', async function () {
+      // Create Offer
+      await pawnShop.connect(borrower)
+        .createOffer1155(
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          data.to,
+          data.borrowAmount,
+          data.borrowToken,
+          data.borrowPeriod,
+          data.startApplyAt,
+          data.closeApplyAt,
+          data.nftAmount
+        )
+      let lenderFee;
+      let serviceFee;
+      let approvedAmount;
+      [lenderFee, serviceFee, approvedAmount] = await pawnShop.connect(borrower).quoteApplyAmounts(data.offerId);
+
+      // Approve testERC20
+      await testERC20.connect(lender).approve(pawnShop.address, approvedAmount);
+      // Apply Offer
+      await pawnShop.connect(lender).applyOffer(data.offerId, data.borrowAmount);
+
+      expect(lenderFee.toString()).to.eq('191653')
+      expect(serviceFee.toString()).to.eq('38330')
+      expect(approvedAmount.toString()).to.eq('99808347')
+    })
+
+    it('quoteExtendFees', async function () {
+      // Create Offer
+      await pawnShop.connect(borrower)
+        .createOffer1155(
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          data.to,
+          data.borrowAmount,
+          data.borrowToken,
+          data.borrowPeriod,
+          data.startApplyAt,
+          data.closeApplyAt,
+                    data.nftAmount
+        )
+      let lenderFee;
+      let serviceFee;
+      let extendPeriod = 1209600; // 2 weeks in seconds
+
+      // Approve testERC20
+      testERC20.connect(lender).approve(pawnShop.address, data.borrowAmount);
+
+      // Apply Offer
+      await pawnShop.connect(lender).applyOffer(data.offerId, data.borrowAmount);
+
+      // Get estimate extend fees
+      [lenderFee, serviceFee] = await pawnShop.connect(borrower).quoteExtendFees(data.offerId, utils.convertBig(extendPeriod));
+      await testERC20.connect(borrower).approve(pawnShop.address, lenderFee.add(serviceFee));
+
+      // Get balances
+      const treasuryBalance = await testERC20.balanceOf(treasury.address);
+      const lenderBalance = await testERC20.balanceOf(lender.address);
+
+      await pawnShop.connect(borrower).extendLendingTime(data.offerId, extendPeriod);
+      expect(lenderFee.toString()).to.eq('383307')
+      expect(serviceFee.toString()).to.eq('76661')
+      expect(await testERC20.balanceOf(treasury.address)).to.eq(treasuryBalance.add(serviceFee));
+      expect(await testERC20.balanceOf(lender.address)).to.eq(lenderBalance.add(lenderFee));
+    })
+  })
 })
