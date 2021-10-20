@@ -898,6 +898,12 @@ describe('ERC721 PawnShop', function () {
       let serviceFee;
       let approvedAmount;
       [lenderFee, serviceFee, approvedAmount] = await pawnShop.connect(borrower).quoteApplyAmounts(data.offerId);
+
+      // Approve testERC20
+      await testERC20.connect(lender).approve(pawnShop.address, approvedAmount);
+      // Apply Offer
+      await pawnShop.connect(lender).applyOffer(data.offerId, data.borrowAmount);
+
       expect(lenderFee.toString()).to.eq('191653')
       expect(serviceFee.toString()).to.eq('38330')
       expect(approvedAmount.toString()).to.eq('99808347')
@@ -917,16 +923,29 @@ describe('ERC721 PawnShop', function () {
           data.startApplyAt,
           data.closeApplyAt,
         )
-      // Approve testERC20
-      testERC20.connect(lender).approve(pawnShop.address, data.borrowAmount)
-      // Apply Offer
-      await pawnShop.connect(lender).applyOffer(data.offerId, data.borrowAmount)
       let lenderFee;
       let serviceFee;
       let extendPeriod = 1209600; // 2 weeks in seconds
+
+      // Approve testERC20
+      testERC20.connect(lender).approve(pawnShop.address, data.borrowAmount);
+
+      // Apply Offer
+      await pawnShop.connect(lender).applyOffer(data.offerId, data.borrowAmount);
+
+      // Get estimate extend fees
       [lenderFee, serviceFee] = await pawnShop.connect(borrower).quoteExtendFees(data.offerId, utils.convertBig(extendPeriod));
+      await testERC20.connect(borrower).approve(pawnShop.address, lenderFee.add(serviceFee));
+
+      // Get balances
+      const treasuryBalance = await testERC20.balanceOf(treasury.address);
+      const lenderBalance = await testERC20.balanceOf(lender.address);
+
+      await pawnShop.connect(borrower).extendLendingTime(data.offerId, extendPeriod);
       expect(lenderFee.toString()).to.eq('383307')
       expect(serviceFee.toString()).to.eq('76661')
+      expect(await testERC20.balanceOf(treasury.address)).to.eq(treasuryBalance.add(serviceFee));
+      expect(await testERC20.balanceOf(lender.address)).to.eq(lenderBalance.add(lenderFee));
     })
   })
 })
