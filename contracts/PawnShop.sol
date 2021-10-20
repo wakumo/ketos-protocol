@@ -94,8 +94,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         if (_serviceFeeRate > 0) _tokenFeeRates[_token].serviceFeeRate = _serviceFeeRate;
     }
 
-    function getOffer(bytes16 tokenId) external view returns(Offer memory offer){
-        return _offers[tokenId];
+    function getOffer(bytes16 _offerId) external view returns(Offer memory offer){
+        return _offers[_offerId];
     }
 
     function createOffer721(
@@ -339,14 +339,14 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     }
 
     // Borrower call this function to estimate how much fees need to paid to extendTimes
-    function quoteExtendFees(bytes16 _tokenId, uint256 _borrowPeriod)
+    function quoteExtendFees(bytes16 _offerId, uint256 _extendPeriod)
         public
         override
         view
         returns (uint256 lenderFee, uint256 serviceFee)
     {
-        Offer memory offer = _offers[_tokenId];
-        (lenderFee, serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, _borrowPeriod);
+        Offer memory offer = _offers[_offerId];
+        (lenderFee, serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, _extendPeriod);
     }
 
     //

@@ -875,28 +875,29 @@ describe('ERC721 PawnShop', function () {
       const lendingPeriod = 604800; // 7 days
       let lenderFee;
       let serviceFee;
-      [lenderFee, serviceFee] = await erc721PawnShop.connect(borrower).quoteFees(borrowAmount, token, lendingPeriod);
+      [lenderFee, serviceFee] = await pawnShop.connect(borrower).quoteFees(borrowAmount, token, lendingPeriod);
       expect(lenderFee.toString()).to.eq('191653')
       expect(serviceFee.toString()).to.eq('38330')
     })
 
     it('quoteApplyAmounts', async function () {
       // Create Offer
-      await erc721PawnShop.connect(borrower)
-        .createOffer(
+      await pawnShop.connect(borrower)
+        .createOffer721(
+          data.offerId,
           data.collection,
           data.tokenId,
-          data.dest,
-          data.amount,
-          data.paymentToken,
-          data.borrowCycleNo,
-          data.startTime,
-          data.endTime,
+          data.to,
+          data.borrowAmount,
+          data.borrowToken,
+          data.borrowPeriod,
+          data.startApplyAt,
+          data.closeApplyAt,
         )
       let lenderFee;
       let serviceFee;
       let approvedAmount;
-      [lenderFee, serviceFee, approvedAmount] = await erc721PawnShop.connect(borrower).quoteApplyAmounts(data.collection, data.tokenId);
+      [lenderFee, serviceFee, approvedAmount] = await pawnShop.connect(borrower).quoteApplyAmounts(data.offerId);
       expect(lenderFee.toString()).to.eq('191653')
       expect(serviceFee.toString()).to.eq('38330')
       expect(approvedAmount.toString()).to.eq('99808347')
@@ -904,24 +905,26 @@ describe('ERC721 PawnShop', function () {
 
     it('quoteExtendFees', async function () {
       // Create Offer
-      await erc721PawnShop.connect(borrower)
-        .createOffer(
+      await pawnShop.connect(borrower)
+        .createOffer721(
+          data.offerId,
           data.collection,
           data.tokenId,
-          data.dest,
-          data.amount,
-          data.paymentToken,
-          data.borrowCycleNo,
-          data.startTime,
-          data.endTime,
+          data.to,
+          data.borrowAmount,
+          data.borrowToken,
+          data.borrowPeriod,
+          data.startApplyAt,
+          data.closeApplyAt,
         )
       // Approve testERC20
-      testERC20.connect(lender).approve(erc721PawnShop.address, data.amount)
+      testERC20.connect(lender).approve(pawnShop.address, data.borrowAmount)
       // Apply Offer
-      await erc721PawnShop.connect(lender).applyOffer(data.collection, data.tokenId, data.amount)
+      await pawnShop.connect(lender).applyOffer(data.offerId, data.borrowAmount)
       let lenderFee;
       let serviceFee;
-      [lenderFee, serviceFee] = await erc721PawnShop.connect(borrower).quoteExtendFees(data.collection, data.tokenId, 2);
+      let extendPeriod = 1209600; // 2 weeks in seconds
+      [lenderFee, serviceFee] = await pawnShop.connect(borrower).quoteExtendFees(data.offerId, utils.convertBig(extendPeriod));
       expect(lenderFee.toString()).to.eq('383307')
       expect(serviceFee.toString()).to.eq('76661')
     })
