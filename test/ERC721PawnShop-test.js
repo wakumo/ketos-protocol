@@ -863,4 +863,67 @@ describe('ERC721 PawnShop', function () {
       expect(offer.serviceFeeRate).to.not.eq(2000)
     })
   })
+
+  //
+  //
+  // Estimate Fees
+  //
+  describe('Quote Fees', async function () {
+    it('quoteFees', async function () {
+      const borrowAmount = utils.convertBig(100 * 10 ** 6);
+      const token = testERC20.address;
+      const lendingPeriod = 604800; // 7 days
+      let lenderFee;
+      let serviceFee;
+      [lenderFee, serviceFee] = await erc721PawnShop.connect(borrower).quoteFees(borrowAmount, token, lendingPeriod);
+      expect(lenderFee.toString()).to.eq('191653')
+      expect(serviceFee.toString()).to.eq('38330')
+    })
+
+    it('quoteApplyAmounts', async function () {
+      // Create Offer
+      await erc721PawnShop.connect(borrower)
+        .createOffer(
+          data.collection,
+          data.tokenId,
+          data.dest,
+          data.amount,
+          data.paymentToken,
+          data.borrowCycleNo,
+          data.startTime,
+          data.endTime,
+        )
+      let lenderFee;
+      let serviceFee;
+      let approvedAmount;
+      [lenderFee, serviceFee, approvedAmount] = await erc721PawnShop.connect(borrower).quoteApplyAmounts(data.collection, data.tokenId);
+      expect(lenderFee.toString()).to.eq('191653')
+      expect(serviceFee.toString()).to.eq('38330')
+      expect(approvedAmount.toString()).to.eq('99808347')
+    })
+
+    it('quoteExtendFees', async function () {
+      // Create Offer
+      await erc721PawnShop.connect(borrower)
+        .createOffer(
+          data.collection,
+          data.tokenId,
+          data.dest,
+          data.amount,
+          data.paymentToken,
+          data.borrowCycleNo,
+          data.startTime,
+          data.endTime,
+        )
+      // Approve testERC20
+      testERC20.connect(lender).approve(erc721PawnShop.address, data.amount)
+      // Apply Offer
+      await erc721PawnShop.connect(lender).applyOffer(data.collection, data.tokenId, data.amount)
+      let lenderFee;
+      let serviceFee;
+      [lenderFee, serviceFee] = await erc721PawnShop.connect(borrower).quoteExtendFees(data.collection, data.tokenId, 2);
+      expect(lenderFee.toString()).to.eq('383307')
+      expect(serviceFee.toString()).to.eq('76661')
+    })
+  })
 })
