@@ -42,9 +42,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         bool    isLending;
     }
 
-    // mapping(address => mapping(uint256 => Offer)) private offers;
-
-    mapping(bytes16 => Offer) private offers;
+    mapping(bytes16 => Offer) private _offers;
 
     mapping(address => FeeRate) private _tokenFeeRates;
 
@@ -97,7 +95,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     }
 
     function getOffer(bytes16 tokenId) external view returns(Offer memory offer){
-        return offers[tokenId];
+        return _offers[tokenId];
     }
 
     function createOffer721(
@@ -140,7 +138,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         whenNotPaused
         nonReentrant
         onlyAmountGreaterThanZero(_borrowAmount)
-        onlyBorrowPeriodGreaterThanZero(_borrowPeriod) 
+        onlyBorrowPeriodGreaterThanZero(_borrowPeriod)
     {
         require(IERC1155(_collection).isApprovedForAll(msg.sender, address(this)) == true, "please approve NFT first");
         // Send NFT to this contract to escrow
@@ -174,12 +172,12 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         onlyAmountGreaterThanZero(_borrowAmount)
         onlyBorrowPeriodGreaterThanZero(_borrowPeriod)
     {
-        // // Validations
+        // Validations
         if (_closeApplyAt != 0) require(_closeApplyAt >= block.timestamp, "invalid closed-apply time");
 
         require(_borrowToken != address(0), "invalid-payment-token");
         require(_tokenFeeRates[_borrowToken].lenderFeeRate != 0, "invalid-payment-token");
-        require(offers[_offerId].collection == address(0), "offer-existed");
+        require(_offers[_offerId].collection == address(0), "offer-existed");
         {
             (uint256 lenderFee, uint256 serviceFee) = quoteFees(_borrowAmount, _borrowToken, _borrowPeriod);
             require(lenderFee > 0, "required minimum lender fee");
@@ -187,7 +185,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         }
 
         // Init offer
-        Offer storage offer = offers[_offerId];
+        Offer storage offer = _offers[_offerId];
 
         // Set offer informations
         offer.owner = msg.sender;
@@ -222,11 +220,13 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         );
     }
     // Lender call this function to accepted the offer immediately
-    function applyOffer(
-        bytes16 _offerId,
-        uint256 _borrowAmount
-    ) external whenNotPaused override nonReentrant {
-        Offer storage offer = offers[_offerId];
+    function applyOffer(bytes16 _offerId, uint256 _borrowAmount)
+        external
+        whenNotPaused
+        override
+        nonReentrant
+    {
+        Offer storage offer = _offers[_offerId];
 
         // Validations
         require(offer.borrowAmount == _borrowAmount, "offer borrow amount has changed");
@@ -254,11 +254,11 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     // Borrower pay
     function repay(bytes16 _offerId)
-    external
-    override
-    nonReentrant
+        external
+        override
+        nonReentrant
     {
-        Offer storage offer = offers[_offerId];
+        Offer storage offer = _offers[_offerId];
 
         // Validations
         require(offer.isLending == true, "repay-in-progress-offer-only");
@@ -280,12 +280,12 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, borrowAmount);
     }
 
-    function updateOffer(
-        bytes16 _offerId,
-        uint256 _borrowAmount,
-        uint256 _borrowPeriod
-    ) external whenNotPaused override {
-        Offer storage offer = offers[_offerId];
+    function updateOffer(bytes16 _offerId, uint256 _borrowAmount, uint256 _borrowPeriod)
+        external
+        whenNotPaused
+        override
+    {
+        Offer storage offer = _offers[_offerId];
 
         // Validations
         require(offer.owner == msg.sender, "only owner can update offer");
@@ -304,8 +304,12 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod);
     }
 
-    function cancelOffer(bytes16 _offerId) external whenNotPaused override {
-        Offer storage offer = offers[_offerId];
+    function cancelOffer(bytes16 _offerId)
+        external
+        whenNotPaused
+        override
+    {
+        Offer storage offer = _offers[_offerId];
 
         // Validations
         require(
@@ -325,10 +329,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     // Borrower can know how much they can receive before creating offer
     //
     function quoteFees(uint256 _borrowAmount, address _token, uint256 _lendingPeriod)
-    public
-    override
-    view
-    returns (uint256 lenderFee, uint256 serviceFee)
+        public
+        override
+        view
+        returns (uint256 lenderFee, uint256 serviceFee)
     {
         lenderFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _tokenFeeRates[_token].lenderFeeRate, _lendingPeriod);
         serviceFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _tokenFeeRates[_token].serviceFeeRate, _lendingPeriod);
@@ -336,12 +340,12 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     // Borrower call this function to estimate how much fees need to paid to extendTimes
     function quoteExtendFees(bytes16 _tokenId, uint256 _borrowPeriod)
-    public
-    override
-    view
-    returns (uint256 lenderFee, uint256 serviceFee)
+        public
+        override
+        view
+        returns (uint256 lenderFee, uint256 serviceFee)
     {
-        Offer memory offer = offers[_tokenId];
+        Offer memory offer = _offers[_tokenId];
         (lenderFee, serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, _borrowPeriod);
     }
 
@@ -350,22 +354,24 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     // approvedAmount: Token amount lender need to approved to take this offer
     //
     function quoteApplyAmounts(bytes16 _offerId)
-    public
-    override
-    view
-    returns (uint256 lenderFee, uint256 serviceFee, uint256 approvedAmount)
+        public
+        override
+        view
+        returns (uint256 lenderFee, uint256 serviceFee, uint256 approvedAmount)
     {
-        Offer memory offer = offers[_offerId];
+        Offer memory offer = _offers[_offerId];
         (lenderFee, serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, offer.borrowPeriod);
         approvedAmount = offer.borrowAmount.sub(lenderFee);
     }
 
     // Borrower interest only and extend deadline
-    function extendLendingTime(
-        bytes16 _offerId,
-        uint256 _extendPeriod
-    ) external override nonReentrant onlyBorrowPeriodGreaterThanZero(_extendPeriod) {
-        Offer storage offer = offers[_offerId];
+    function extendLendingTime(bytes16 _offerId, uint256 _extendPeriod)
+        external
+        override
+        nonReentrant
+        onlyBorrowPeriodGreaterThanZero(_extendPeriod)
+    {
+        Offer storage offer = _offers[_offerId];
 
         // Validations
         require(offer.owner == msg.sender, "only-owner-can-extend-lending-time");
@@ -410,11 +416,11 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
      *
      **/
     function claim(bytes16 _offerId)
-    external
-    override
-    nonReentrant
+        external
+        override
+        nonReentrant
     {
-        Offer storage offer = offers[_offerId];
+        Offer storage offer = _offers[_offerId];
 
         // Validations
         require(block.timestamp > offer.startLendingAt.add(offer.borrowPeriod), "can not claim in lending period");
@@ -483,6 +489,4 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     function currentTime() public view returns (uint256) {
         return block.timestamp;
     }
-
-    
 }
