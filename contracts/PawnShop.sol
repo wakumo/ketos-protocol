@@ -223,7 +223,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
 
     // Lender call this function to accepted the offer immediatel
-    // offerHash = encode(owner, offerId, collection, tokenId, borrowerAmount,borroweToken, to, startApplyAt, closeApplyAt, borrowPeriod, lenderFee, serviceFeeRate, nftType, nftAmount)
     function applyOffer(bytes16 _offerId, uint256 _borrowAmount, bytes32 _hash)
         external
         whenNotPaused
