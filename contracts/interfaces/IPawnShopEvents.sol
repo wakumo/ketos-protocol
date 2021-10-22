@@ -8,7 +8,7 @@ interface IPawnShopEvents {
         uint256 _tokenId,
         address _owner,
         address _to,
-        uint256 _amount,
+        uint256 _borrowAmount,
         address _borrowToken,
         uint256 _startApplyAt,
         uint256 _closeApplyAt,
@@ -29,15 +29,15 @@ interface IPawnShopEvents {
         address indexed _collection,
         uint256 indexed _tokenId,
         address _repayer,
-        uint256 _amount
+        uint256 _borrowAmount
     );
 
     event OfferUpdated(
         bytes16 indexed _offerId,
         address indexed _collection,
         uint256 indexed _tokenId,
-        uint256 _amount,
-        uint256 _lendingPeriod
+        uint256 _borrowAmount,
+        uint256 _borrowPeriod
     );
 
     event OfferCancelled(bytes16 indexed _offerId, address indexed _collection, uint256 indexed _tokenId);
