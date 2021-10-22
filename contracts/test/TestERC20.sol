@@ -19,6 +19,11 @@ contract TestERC20 is Context, ERC20, Ownable {
         super._mint(_to, _amount);
     }
 
+    // Function for test
+    function currentTime() public view returns (uint256) {
+        return block.timestamp;
+    }
+
     receive() external payable {}
 
     fallback() external payable {}

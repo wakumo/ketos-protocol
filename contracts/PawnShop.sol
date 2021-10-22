@@ -219,8 +219,32 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             offer.nftAmount
         );
     }
-    // Lender call this function to accepted the offer immediately
-    function applyOffer(bytes16 _offerId, uint256 _borrowAmount)
+
+    function _offerHash(        
+        bytes16 _offerId,
+        address _collection,
+        uint256 _tokenId,
+        uint256 _borrowAmount,
+        address _borrowToken,
+        uint256 _borrowPeriod,
+        uint256 _nftAmount
+        ) public view returns(bytes32 _hash) {
+        _hash = keccak256(abi.encode(
+            _offerId,
+            _collection, 
+            _tokenId, 
+            _borrowAmount,
+            _borrowToken,
+            _borrowPeriod,
+            _tokenFeeRates[_borrowToken].lenderFeeRate,
+            _tokenFeeRates[_borrowToken].serviceFeeRate,
+            _nftAmount
+        ));
+    }
+
+    // Lender call this function to accepted the offer immediatel
+    // offerHash = encode(owner, offerId, collection, tokenId, borrowerAmount,borroweToken, to, startApplyAt, closeApplyAt, borrowPeriod, lenderFee, serviceFeeRate, nftType, nftAmount)
+    function applyOffer(bytes16 _offerId, uint256 _borrowAmount, bytes32 _hash)
         external
         whenNotPaused
         override
@@ -232,6 +256,17 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.borrowAmount == _borrowAmount, "offer borrow amount has changed");
         require(offer.isLending == false, "apply-non-open-offer");
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
+
+        bytes32 offerHash =_offerHash( 
+            _offerId,
+            offer.collection, 
+            offer.tokenId, 
+            offer.borrowAmount,
+            offer.borrowToken,
+            offer.borrowPeriod,
+            offer.nftAmount
+        );
+        require(offerHash == _hash, "invalid-offer-hash");
 
         // Update offer informations
         offer.isLending = true;
@@ -485,8 +520,4 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         return bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"));
     }
 
-    // Function for test
-    function currentTime() public view returns (uint256) {
-        return block.timestamp;
-    }
 }
