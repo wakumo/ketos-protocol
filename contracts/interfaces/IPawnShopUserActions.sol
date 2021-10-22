@@ -27,7 +27,7 @@ interface IPawnShopUserActions {
         uint256 _nftAmount
     ) external;
 
-    function applyOffer(bytes16 _offerId, uint256 _amount, bytes32 _hash) external;
+    function applyOffer(bytes16 _offerId, bytes32 _hash) external;
 
     function repay(bytes16 _offerId) external;
 
