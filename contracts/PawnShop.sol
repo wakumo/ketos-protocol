@@ -122,7 +122,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         _createOffer(_offerId, _collection, _tokenId, _to, _borrowAmount, _borrowToken, _borrowPeriod, _startApplyAt, _closeApplyAt, 1, 721);
     }
 
-    function createOffer1155(        
+    function createOffer1155(
         bytes16 _offerId,
         address _collection,
         uint256 _tokenId,
@@ -236,10 +236,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.isLending == false, "apply-non-open-offer");
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
 
-        bytes32 offerHash = PawnShopLibrary.offerHash( 
+        bytes32 offerHash = PawnShopLibrary.offerHash(
             _offerId,
-            offer.collection, 
-            offer.tokenId, 
+            offer.collection,
+            offer.tokenId,
             offer.borrowAmount,
             offer.borrowToken,
             offer.borrowPeriod,
@@ -478,7 +478,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     ) internal pure {
         require(_amount >= _min, "Min amount must be greatr than or equal expected amount");
     }
-    
+
     function onERC1155Received(
         address operator,
         address from,
