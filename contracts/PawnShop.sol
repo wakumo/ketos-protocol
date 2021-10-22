@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.9;
 pragma experimental ABIEncoderV2;
 
 // import "hardhat/console.sol";
@@ -219,8 +219,11 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             offer.nftAmount
         );
     }
-    // Lender call this function to accepted the offer immediately
-    function applyOffer(bytes16 _offerId, uint256 _borrowAmount)
+
+
+
+    // Lender call this function to accepted the offer immediatel
+    function applyOffer(bytes16 _offerId, uint256 _borrowAmount, bytes32 _hash)
         external
         whenNotPaused
         override
@@ -232,6 +235,17 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.borrowAmount == _borrowAmount, "offer borrow amount has changed");
         require(offer.isLending == false, "apply-non-open-offer");
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
+
+        bytes32 offerHash = PawnShopLibrary.offerHash( 
+            _offerId,
+            offer.collection, 
+            offer.tokenId, 
+            offer.borrowAmount,
+            offer.borrowToken,
+            offer.borrowPeriod,
+            offer.nftAmount
+        );
+        require(offerHash == _hash, "offer informations does not match");
 
         // Update offer informations
         offer.isLending = true;
@@ -485,8 +499,4 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         return bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"));
     }
 
-    // Function for test
-    function currentTime() public view returns (uint256) {
-        return block.timestamp;
-    }
 }

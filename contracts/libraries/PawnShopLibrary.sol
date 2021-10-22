@@ -1,4 +1,4 @@
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
@@ -11,5 +11,26 @@ library PawnShopLibrary {
     function getFeeAmount(uint256 borrowAmount, uint256 feeRate, uint256 lendingPeriod) internal pure returns (uint256) {
         require(feeRate > 0, 'invalid feeRate');
         return lendingPeriod.mul(borrowAmount).mul(feeRate).div(YEAR_IN_SECONDS).div(1000000);
+    }
+
+    // Hash to check offer's data integrity 
+    function offerHash(        
+        bytes16 _offerId,
+        address _collection,
+        uint256 _tokenId,
+        uint256 _borrowAmount,
+        address _borrowToken,
+        uint256 _borrowPeriod,
+        uint256 _nftAmount
+    ) internal pure returns(bytes32 _hash) {
+        _hash = keccak256(abi.encode(
+            _offerId,
+            _collection, 
+            _tokenId, 
+            _borrowAmount,
+            _borrowToken,
+            _borrowPeriod,
+            _nftAmount
+        ));
     }
 }
