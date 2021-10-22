@@ -237,7 +237,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.isLending == false, "apply-non-open-offer");
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
 
-        bytes32 offerHash = PawnShopLibrary._offerHash( 
+        bytes32 offerHash = PawnShopLibrary.offerHash( 
             _offerId,
             offer.collection, 
             offer.tokenId, 

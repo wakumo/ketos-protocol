@@ -14,7 +14,7 @@ library PawnShopLibrary {
     }
 
     // Hash to check offer's data integrity 
-    function _offerHash(        
+    function offerHash(        
         bytes16 _offerId,
         address _collection,
         uint256 _tokenId,
@@ -22,7 +22,7 @@ library PawnShopLibrary {
         address _borrowToken,
         uint256 _borrowPeriod,
         uint256 _nftAmount
-    ) public view returns(bytes32 _hash) {
+    ) internal pure returns(bytes32 _hash) {
         _hash = keccak256(abi.encode(
             _offerId,
             _collection, 
@@ -30,8 +30,6 @@ library PawnShopLibrary {
             _borrowAmount,
             _borrowToken,
             _borrowPeriod,
-            _tokenFeeRates[_borrowToken].lenderFeeRate,
-            _tokenFeeRates[_borrowToken].serviceFeeRate,
             _nftAmount
         ));
     }

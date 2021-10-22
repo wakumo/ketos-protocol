@@ -36,7 +36,6 @@ exports.offerHash = function (data) {
       'uint256',
       'uint256',
       'uint256',
-      'uint256',
     ],
     [
       data.offerId,
@@ -45,8 +44,6 @@ exports.offerHash = function (data) {
       data.borrowAmount,
       data.borrowToken,
       data.borrowPeriod,
-      data.lenderFeeRate,
-      data.serviceFeeRate,
       data.nftAmount,
     ],
   )
