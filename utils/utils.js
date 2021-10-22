@@ -34,8 +34,7 @@ exports.offerHash = function (data) {
       'uint256',
       'address',
       'uint256',
-      'uint256',
-      'uint256',
+      'uint256'
     ],
     [
       data.offerId,

@@ -223,7 +223,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
 
     // Lender call this function to accepted the offer immediatel
-    function applyOffer(bytes16 _offerId, uint256 _borrowAmount, bytes32 _hash)
+    function applyOffer(bytes16 _offerId, bytes32 _offerHash)
         external
         whenNotPaused
         override
@@ -232,10 +232,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         Offer storage offer = _offers[_offerId];
 
         // Validations
-        require(offer.borrowAmount == _borrowAmount, "offer borrow amount has changed");
         require(offer.isLending == false, "apply-non-open-offer");
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
-
+        // Check data integrity of the offer
+        // Make sure the borrower does not change any information at applying time
         bytes32 offerHash = PawnShopLibrary.offerHash(
             _offerId,
             offer.collection,
@@ -245,7 +245,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             offer.borrowPeriod,
             offer.nftAmount
         );
-        require(offerHash == _hash, "offer informations does not match");
+        require(offerHash == _offerHash, "offer informations has changed");
 
         // Update offer informations
         offer.isLending = true;
