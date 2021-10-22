@@ -12,4 +12,27 @@ library PawnShopLibrary {
         require(feeRate > 0, 'invalid feeRate');
         return lendingPeriod.mul(borrowAmount).mul(feeRate).div(YEAR_IN_SECONDS).div(1000000);
     }
+
+    // Hash to check offer's data integrity 
+    function _offerHash(        
+        bytes16 _offerId,
+        address _collection,
+        uint256 _tokenId,
+        uint256 _borrowAmount,
+        address _borrowToken,
+        uint256 _borrowPeriod,
+        uint256 _nftAmount
+    ) public view returns(bytes32 _hash) {
+        _hash = keccak256(abi.encode(
+            _offerId,
+            _collection, 
+            _tokenId, 
+            _borrowAmount,
+            _borrowToken,
+            _borrowPeriod,
+            _tokenFeeRates[_borrowToken].lenderFeeRate,
+            _tokenFeeRates[_borrowToken].serviceFeeRate,
+            _nftAmount
+        ));
+    }
 }

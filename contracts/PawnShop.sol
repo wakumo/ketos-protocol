@@ -220,27 +220,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         );
     }
 
-    function _offerHash(        
-        bytes16 _offerId,
-        address _collection,
-        uint256 _tokenId,
-        uint256 _borrowAmount,
-        address _borrowToken,
-        uint256 _borrowPeriod,
-        uint256 _nftAmount
-        ) public view returns(bytes32 _hash) {
-        _hash = keccak256(abi.encode(
-            _offerId,
-            _collection, 
-            _tokenId, 
-            _borrowAmount,
-            _borrowToken,
-            _borrowPeriod,
-            _tokenFeeRates[_borrowToken].lenderFeeRate,
-            _tokenFeeRates[_borrowToken].serviceFeeRate,
-            _nftAmount
-        ));
-    }
+
 
     // Lender call this function to accepted the offer immediatel
     // offerHash = encode(owner, offerId, collection, tokenId, borrowerAmount,borroweToken, to, startApplyAt, closeApplyAt, borrowPeriod, lenderFee, serviceFeeRate, nftType, nftAmount)
@@ -257,7 +237,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.isLending == false, "apply-non-open-offer");
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
 
-        bytes32 offerHash =_offerHash( 
+        bytes32 offerHash = PawnShopLibrary._offerHash( 
             _offerId,
             offer.collection, 
             offer.tokenId, 
@@ -266,7 +246,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             offer.borrowPeriod,
             offer.nftAmount
         );
-        require(offerHash == _hash, "invalid-offer-hash");
+        require(offerHash == _hash, "offer informations does not match");
 
         // Update offer informations
         offer.isLending = true;
