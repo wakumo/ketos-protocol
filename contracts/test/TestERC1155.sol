@@ -21,6 +21,11 @@ contract TestERC1155 is Context, ERC1155, Ownable {
         super._burn(_account, _tokenId, _amount);
     }
 
+    // Function for test
+    function currentTime() public view returns (uint256) {
+        return block.timestamp;
+    }
+
     receive() external payable {}
 
     fallback() external payable {}

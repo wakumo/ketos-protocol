@@ -13,6 +13,7 @@ exports.convertBig = function (value) {
   return ethers.BigNumber.from(BigInt(value).toString())
 }
 exports.address0 = '0x0000000000000000000000000000000000000000'
+exports.eth = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 
 exports.randId = function () {
   var dt = new Date().getTime()
@@ -26,7 +27,7 @@ exports.randId = function () {
 
 exports.offerHash = function (data) {
   let web3 = new Web3(ethers.provider)
-  result = web3.eth.abi.encodeParameters(
+  dataPacked = [
     [
       'bytes16',
       'address',
@@ -34,7 +35,7 @@ exports.offerHash = function (data) {
       'uint256',
       'address',
       'uint256',
-      'uint256'
+      'uint256',
     ],
     [
       data.offerId,
@@ -45,7 +46,8 @@ exports.offerHash = function (data) {
       data.borrowPeriod,
       data.nftAmount,
     ],
-  )
+  ]
+  result = web3.eth.abi.encodeParameters(...dataPacked)
   result = web3.utils.sha3(result)
   return result
 }
