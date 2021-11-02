@@ -48,7 +48,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     address payable public treasury;
 
-    uint256 constant public  LIQUIDATION_PERIOD_IN_SECONDS = 2592000;
+    uint256 constant public LIQUIDATION_PERIOD_IN_SECONDS = 2592000;
+    address constant public ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     constructor(address payable _treasury) {
         treasury = _treasury;
@@ -133,7 +134,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         uint256 _startApplyAt,
         uint256 _closeApplyAt,
         uint256 _nftAmount
-    ) external
+    )   external
         override
         whenNotPaused
         nonReentrant
@@ -151,6 +152,14 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             IERC1155(_collection).safeTransferFrom(_from, _to, _tokenId, _nftAmount, "0x");
         } else if (_nftType == 721) {
             IERC721(_collection).transferFrom(_from, _to, _tokenId);
+        }
+    }
+
+    function _safeTransfer(address _token, address _from, address _to, uint256 _amount) internal {
+        if (_token == ETH_ADDRESS) {
+            payable(_to).transfer(_amount);
+        } else {
+            IERC20(_token).transferFrom(_from, _to, _amount);
         }
     }
 
@@ -220,13 +229,32 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         );
     }
 
-
+    function getOfferHash(
+        bytes16 _offerId, 
+        address _collection, 
+        uint256 _tokenId, 
+        uint256 _borrowAmount, 
+        address _borrowToken, 
+        uint256 _borrowPeriod, 
+        uint256 _nftAmount 
+    ) public view override returns (bytes32) {
+        return PawnShopLibrary.offerHash(
+            _offerId,
+            _collection,
+            _tokenId,
+            _borrowAmount,
+            _borrowToken,
+            _borrowPeriod,
+            _nftAmount
+        );
+    }
 
     // Lender call this function to accepted the offer immediatel
     function applyOffer(bytes16 _offerId, bytes32 _offerHash)
         external
         whenNotPaused
         override
+        payable
         nonReentrant
     {
         Offer storage offer = _offers[_offerId];
@@ -257,8 +285,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         uint256 borrowAmountAfterFee = offer.borrowAmount.sub(lenderFee).sub(serviceFee);
 
         // Send amount to borrower and fee to admin
-        IERC20(offer.borrowToken).transferFrom(msg.sender, offer.to, borrowAmountAfterFee);
-        IERC20(offer.borrowToken).transferFrom(msg.sender, treasury, serviceFee);
+        if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= (borrowAmountAfterFee + serviceFee), "invalid-amount");
+        _safeTransfer(offer.borrowToken, msg.sender, offer.to, borrowAmountAfterFee);
+        _safeTransfer(offer.borrowToken, msg.sender, treasury, serviceFee);
 
         // Update end times
         offer.liquidationAt = offer.startLendingAt.add(offer.borrowPeriod).add(LIQUIDATION_PERIOD_IN_SECONDS);
@@ -270,6 +299,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     function repay(bytes16 _offerId)
         external
         override
+        payable
         nonReentrant
     {
         Offer storage offer = _offers[_offerId];
@@ -280,11 +310,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.owner == msg.sender, "only owner can repay and get NFT");
 
         // Repay token to lender
-        IERC20(offer.borrowToken).transferFrom(
-            msg.sender,
-            offer.lender,
-            offer.borrowAmount
-        );
+        if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= offer.borrowAmount, "invalid-amount");
+        _safeTransfer(offer.borrowToken, msg.sender, offer.lender, offer.borrowAmount);
+
         // Send NFT back to borrower
         _nftSafeTransfer(address(this), msg.sender, offer.collection, offer.tokenId, offer.nftAmount, offer.nftType);
 
@@ -294,7 +322,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, borrowAmount);
     }
 
-    function updateOffer(bytes16 _offerId, uint256 _borrowAmount, uint256 _borrowPeriod)
+    function updateOffer(bytes16 _offerId, uint256 _borrowAmount, uint256 _borrowPeriod, address _borrowToken)
         external
         whenNotPaused
         override
@@ -308,6 +336,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Update offer if has changed?
         if (_borrowPeriod > 0) offer.borrowPeriod = _borrowPeriod;
         if (_borrowAmount > 0) offer.borrowAmount = _borrowAmount;
+        if (_borrowToken != offer.borrowToken) offer.borrowToken = _borrowToken;
 
         (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, offer.borrowPeriod);
 
@@ -382,6 +411,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     function extendLendingTime(bytes16 _offerId, uint256 _extendPeriod)
         external
         override
+        payable
         nonReentrant
         onlyBorrowPeriodGreaterThanZero(_extendPeriod)
     {
@@ -405,8 +435,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(lenderFee > 0, "required minimum lender fee");
         require(serviceFee > 0, "required minimum service fee");
 
-        IERC20(offer.borrowToken).transferFrom(msg.sender, offer.lender, lenderFee);
-        IERC20(offer.borrowToken).transferFrom(msg.sender, treasury, serviceFee);
+        if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= (lenderFee + serviceFee), "invalid-amount");
+        _safeTransfer(offer.borrowToken, msg.sender, offer.lender, lenderFee);
+        _safeTransfer(offer.borrowToken, msg.sender, treasury, serviceFee);
 
         // Update end times
         offer.borrowPeriod = offer.borrowPeriod.add(_extendPeriod);

@@ -21,6 +21,11 @@ contract TestERC721 is Context, ERC721, Ownable {
         super._burn(_tokenId);
     }
 
+    // Function for test
+    function currentTime() public view returns (uint256) {
+        return block.timestamp;
+    }
+
     receive() external payable {}
 
     fallback() external payable {}
