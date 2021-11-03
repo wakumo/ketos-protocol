@@ -44,12 +44,15 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     mapping(bytes16 => Offer) private _offers;
 
-    mapping(address => FeeRate) private _tokenFeeRates;
+    mapping(address => uint256) private _serviceFeeRates;
 
     address payable public treasury;
 
     uint256 constant public LIQUIDATION_PERIOD_IN_SECONDS = 2592000;
     address constant public ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+    uint256 constant public MINIMUM_LENDER_FEE = 60000; // 6 %
+    uint256 constant public MAXIMUM_LENDER_FEE = 720000; // 72 %
+    uint256 constant public DEFAULT_ADMIN_FEE = 20000; // 2%
 
     constructor(address payable _treasury) {
         treasury = _treasury;
@@ -82,76 +85,60 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         _;
     }
 
-    function getSystemTokenFeeRates(address _token) external view returns (FeeRate memory) {
-        return _tokenFeeRates[_token];
+    function getServiceFeeRate(address _token) external view returns (uint256) {
+        return _serviceFeeRates[_token];
     }
 
-    function setTokenFeeRates(
-        address _token,
-        uint256 _lenderFeeRate,
-        uint256 _serviceFeeRate
-    ) external override onlyOwner {
-        if (_lenderFeeRate > 0) _tokenFeeRates[_token].lenderFeeRate = _lenderFeeRate;
-        if (_serviceFeeRate > 0) _tokenFeeRates[_token].serviceFeeRate = _serviceFeeRate;
+    function setServiceFeeRates(address[] memory _tokens, uint256[] memory _fees) external override onlyOwner {
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            setServiceFeeRate(_tokens[i], _fees[i]);
+        }
+    }
+
+    function setServiceFeeRate(address _token, uint256 _fee) public override onlyOwner {
+        if (_fee > 0) _serviceFeeRates[_token] = _fee;
     }
 
     function getOffer(bytes16 _offerId) external view returns(Offer memory offer){
         return _offers[_offerId];
     }
 
-    function createOffer721(
-        bytes16 _offerId,
-        address _collection,
-        uint256 _tokenId,
-        address _to,
-        uint256 _borrowAmount,
-        address _borrowToken,
-        uint256 _borrowPeriod,
-        uint256 _startApplyAt,
-        uint256 _closeApplyAt
-    )
+    function createOffer721(OfferCreateParam memory params)
         external
         override
         whenNotPaused
         nonReentrant
-        onlyAmountGreaterThanZero(_borrowAmount)
-        onlyBorrowPeriodGreaterThanZero(_borrowPeriod)
     {
-        require(IERC721(_collection).getApproved(_tokenId) == address(this), "please approve NFT first");
+        require(IERC721(params.collection).getApproved(params.tokenId) == address(this), "please approve NFT first");
+        // require(params.collection.call(abi.encodeWithSignature("getApproved(uint256)", params.tokenId)) == address(this), "please approve NFT first");
         // Send NFT to this contract to escrow
-        _nftSafeTransfer(msg.sender, address(this), _collection, _tokenId, 1, 721);
-        _createOffer(_offerId, _collection, _tokenId, _to, _borrowAmount, _borrowToken, _borrowPeriod, _startApplyAt, _closeApplyAt, 1, 721);
+        _nftSafeTransfer(msg.sender, address(this), params.collection, params.tokenId, 1, 721);
+        params.nftAmount = 1;
+        _createOffer(params, 721);
     }
 
-    function createOffer1155(
-        bytes16 _offerId,
-        address _collection,
-        uint256 _tokenId,
-        address _to,
-        uint256 _borrowAmount,
-        address _borrowToken,
-        uint256 _borrowPeriod,
-        uint256 _startApplyAt,
-        uint256 _closeApplyAt,
-        uint256 _nftAmount
-    )   external
+    function createOffer1155(OfferCreateParam memory params)   
+        external
         override
         whenNotPaused
         nonReentrant
-        onlyAmountGreaterThanZero(_borrowAmount)
-        onlyBorrowPeriodGreaterThanZero(_borrowPeriod)
     {
-        require(IERC1155(_collection).isApprovedForAll(msg.sender, address(this)) == true, "please approve NFT first");
+        require(IERC1155(params.collection).isApprovedForAll(msg.sender, address(this)) == true, "please approve NFT first");
+        // require(params.collection.call(abi.encodeWithSignature("isApprovedForAll(address, address)", msg.sender, address(this))) == true, )
         // Send NFT to this contract to escrow
-        _nftSafeTransfer(msg.sender, address(this), _collection, _tokenId, _nftAmount, 1155);
-        _createOffer(_offerId, _collection, _tokenId, _to, _borrowAmount, _borrowToken, _borrowPeriod, _startApplyAt, _closeApplyAt, _nftAmount, 1155);
+        _nftSafeTransfer(msg.sender, address(this), params.collection, params.tokenId, params.nftAmount, 1155);
+        _createOffer(params, 1155);
     }
 
     function _nftSafeTransfer(address _from, address _to, address _collection, uint256 _tokenId, uint256 _nftAmount, uint256 _nftType) internal {
         if (_nftType  == 1155) {
-            IERC1155(_collection).safeTransferFrom(_from, _to, _tokenId, _nftAmount, "0x");
+            // IERC1155(_collection).safeTransferFrom(_from, _to, _tokenId, _nftAmount, "0x");
+            (bool success, ) = _collection.call(abi.encodeWithSignature("safeTransferFrom(address, address, uint256, uint256, bytes", _from, _to, _tokenId, _nftAmount, "0x"));
+            require(success == true, "fail_nft_transfer");
         } else if (_nftType == 721) {
-            IERC721(_collection).transferFrom(_from, _to, _tokenId);
+            // IERC721(_collection).transferFrom(_from, _to, _tokenId);
+            (bool success, ) = _collection.call(abi.encodeWithSignature("transferFrom(address, address, uint256)", _from, _to, _tokenId));
+            require(success == true, "fail_nft_transfer");
         }
     }
 
@@ -160,61 +147,54 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             payable(_to).transfer(_amount);
         } else {
             IERC20(_token).transferFrom(_from, _to, _amount);
+            // (bool success, ) = _token.call(abi.encodeWithSignature("transferFrom(address, address, uint256)", _from, _to, _amount));
+            // require(success == true, "fail_erc20_transfer");
         }
     }
 
     function _createOffer(
-        bytes16 _offerId,
-        address _collection,
-        uint256 _tokenId,
-        address _to,
-        uint256 _borrowAmount,
-        address _borrowToken,
-        uint256 _borrowPeriod,
-        uint256 _startApplyAt,
-        uint256 _closeApplyAt,
-        uint256 _nftAmount,
+        OfferCreateParam memory params,
         uint256 _nftType
     )
         internal
         whenNotPaused
-        onlyAmountGreaterThanZero(_borrowAmount)
-        onlyBorrowPeriodGreaterThanZero(_borrowPeriod)
+        onlyAmountGreaterThanZero(params.borrowAmount)
+        onlyBorrowPeriodGreaterThanZero(params.borrowPeriod)
     {
         // Validations
-        if (_closeApplyAt != 0) require(_closeApplyAt >= block.timestamp, "invalid closed-apply time");
+        if (params.closeApplyAt != 0) require(params.closeApplyAt >= block.timestamp, "invalid closed-apply time");
 
-        require(_borrowToken != address(0), "invalid-payment-token");
-        require(_tokenFeeRates[_borrowToken].lenderFeeRate != 0, "invalid-payment-token");
-        require(_offers[_offerId].collection == address(0), "offer-existed");
-        {
-            (uint256 lenderFee, uint256 serviceFee) = quoteFees(_borrowAmount, _borrowToken, _borrowPeriod);
+        require(params.borrowToken != address(0), "invalid-payment-token");
+        require(_offers[params.offerId].collection == address(0), "offer-existed");
+
+        // Init offer
+        Offer memory offer;
+        offer.lenderFeeRate = params.lenderFeeRate;
+        offer.serviceFeeRate = _serviceFeeRates[params.borrowToken];
+        if (offer.serviceFeeRate == 0) offer.serviceFeeRate = DEFAULT_ADMIN_FEE;
+         {
+            (uint256 lenderFee, uint256 serviceFee) = quoteFees(params.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, params.borrowPeriod);
             require(lenderFee > 0, "required minimum lender fee");
             require(serviceFee> 0, "required minimum service fee");
         }
-
-        // Init offer
-        Offer storage offer = _offers[_offerId];
-
         // Set offer informations
         offer.owner = msg.sender;
-        offer.borrowAmount = _borrowAmount;
-        offer.borrowToken = _borrowToken;
-        offer.to = _to;
-        offer.collection = _collection;
-        offer.tokenId = _tokenId;
-        offer.startApplyAt = _startApplyAt;
+        offer.borrowAmount = params.borrowAmount;
+        offer.borrowToken = params.borrowToken;
+        offer.to = params.to;
+        offer.collection = params.collection;
+        offer.tokenId = params.tokenId;
+        offer.startApplyAt = params.startApplyAt;
         if (offer.startApplyAt == 0) offer.startApplyAt = block.timestamp;
-        offer.closeApplyAt = _closeApplyAt;
-        offer.borrowPeriod = _borrowPeriod;
-        offer.lenderFeeRate = _tokenFeeRates[_borrowToken].lenderFeeRate;
-        offer.serviceFeeRate = _tokenFeeRates[_borrowToken].serviceFeeRate;
+        offer.closeApplyAt = params.closeApplyAt;
+        offer.borrowPeriod = params.borrowPeriod;
         offer.nftType = _nftType;
-        offer.nftAmount = _nftAmount;
+        offer.nftAmount = params.nftAmount;
 
+        _offers[params.offerId] = offer;
         // Emit event
         emit OfferCreated(
-            _offerId,
+            params.offerId,
             offer.collection,
             offer.tokenId,
             msg.sender,
@@ -337,8 +317,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         if (_borrowPeriod > 0) offer.borrowPeriod = _borrowPeriod;
         if (_borrowAmount > 0) offer.borrowAmount = _borrowAmount;
         if (_borrowToken != offer.borrowToken) offer.borrowToken = _borrowToken;
-
-        (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, offer.borrowPeriod);
+        offer.serviceFeeRate = _serviceFeeRates[offer.borrowToken];
+        if (offer.serviceFeeRate == 0) offer.serviceFeeRate = DEFAULT_ADMIN_FEE;
+        (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, offer.borrowPeriod);
 
         // Validations
         require(lenderFee > 0, "required minimum lender fee");
@@ -371,14 +352,14 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     // @dev
     // Borrower can know how much they can receive before creating offer
     //
-    function quoteFees(uint256 _borrowAmount, address _token, uint256 _lendingPeriod)
+    function quoteFees(uint256 _borrowAmount, uint256 _lenderFeeRate, uint256 _serviceFeeRate, uint256 _lendingPeriod)
         public
         override
         view
         returns (uint256 lenderFee, uint256 serviceFee)
     {
-        lenderFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _tokenFeeRates[_token].lenderFeeRate, _lendingPeriod);
-        serviceFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _tokenFeeRates[_token].serviceFeeRate, _lendingPeriod);
+        lenderFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _lenderFeeRate, _lendingPeriod);
+        serviceFee = PawnShopLibrary.getFeeAmount(_borrowAmount, _serviceFeeRate, _lendingPeriod);
     }
 
     // Borrower call this function to estimate how much fees need to paid to extendTimes
@@ -389,7 +370,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         returns (uint256 lenderFee, uint256 serviceFee)
     {
         Offer memory offer = _offers[_offerId];
-        (lenderFee, serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, _extendPeriod);
+        (lenderFee, serviceFee) = quoteFees(offer.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, _extendPeriod);
     }
 
     //
@@ -403,7 +384,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         returns (uint256 lenderFee, uint256 serviceFee, uint256 approvedAmount)
     {
         Offer memory offer = _offers[_offerId];
-        (lenderFee, serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, offer.borrowPeriod);
+        (lenderFee, serviceFee) = quoteFees(offer.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, offer.borrowPeriod);
         approvedAmount = offer.borrowAmount.sub(lenderFee);
     }
 
@@ -422,16 +403,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.isLending == true, "can only extend in progress offer");
         require(offer.startLendingAt.add(offer.borrowPeriod) >= block.timestamp, "lending-time-closed");
 
-        // Update fees if has changed
-        {
-            uint256 lenderFeeRate = _tokenFeeRates[offer.borrowToken].lenderFeeRate;
-            uint256 serviceFeeRate = _tokenFeeRates[offer.borrowToken].serviceFeeRate;
-            if (lenderFeeRate != offer.lenderFeeRate) offer.lenderFeeRate = lenderFeeRate;
-            if (serviceFeeRate != offer.serviceFeeRate) offer.serviceFeeRate = serviceFeeRate;
-        }
-
         // Calculate Fees
-        (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.borrowAmount, offer.borrowToken, _extendPeriod);
+        (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, _extendPeriod);
         require(lenderFee > 0, "required minimum lender fee");
         require(serviceFee > 0, "required minimum service fee");
 
