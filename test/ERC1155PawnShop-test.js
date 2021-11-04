@@ -13,7 +13,7 @@ describe('ERC1155 PawnShop', function () {
   let nftAmount = 2
   let lenderFeeRate = 100000
   let serviceFeeRate = 20000
-  const LIQUIDATION_PERIOD_IN_SECONDS = utils.convertBig(2592000)
+  let LIQUIDATION_PERIOD_IN_SECONDS
   before(async function () {
     ;[treasury, borrower, lender, ...addrs] = await ethers.getSigners()
     const TestERC1155 = await ethers.getContractFactory('TestERC1155')
@@ -30,6 +30,7 @@ describe('ERC1155 PawnShop', function () {
     const PawnShop = await ethers.getContractFactory('PawnShop')
     pawnShop = await PawnShop.deploy(treasury.address)
     await pawnShop.deployed()
+    LIQUIDATION_PERIOD_IN_SECONDS = await pawnShop.LIQUIDATION_PERIOD_IN_SECONDS()
     // set fee
     await pawnShop.setServiceFeeRate(testERC20.address, 20000) // 10% & 2%
     // let currentTime = utils.convertInt(await network.provider.send("evm_mine"));

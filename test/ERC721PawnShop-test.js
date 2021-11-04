@@ -12,7 +12,7 @@ describe('ERC721 PawnShop', function () {
   let borrowPeriod = 60 * 60 * 24 * 7
   let lenderFeeRate = 100000
   let serviceFeeRate = 20000
-  const LIQUIDATION_PERIOD_IN_SECONDS = utils.convertBig(2592000)
+  let LIQUIDATION_PERIOD_IN_SECONDS
   before(async function () {
     ;[treasury, borrower, lender, ...addrs] = await ethers.getSigners()
     const TestERC721 = await ethers.getContractFactory('TestERC721')
@@ -30,6 +30,7 @@ describe('ERC721 PawnShop', function () {
     const PawnShop = await ethers.getContractFactory('PawnShop')
     pawnShop = await PawnShop.deploy(treasury.address)
     await pawnShop.deployed()
+    LIQUIDATION_PERIOD_IN_SECONDS = await pawnShop.LIQUIDATION_PERIOD_IN_SECONDS()
     // set fee
     await pawnShop.setServiceFeeRate(testERC20.address, serviceFeeRate) // 10% & 2%
     // let currentTime = utils.convertInt(await network.provider.send("evm_mine"));
@@ -422,11 +423,15 @@ describe('ERC721 PawnShop', function () {
           offer.startLendingAt.add(data.borrowPeriod * 2),
           offer.liquidationAt.add(data.borrowPeriod),
           fees.lenderFee,
-          1
+          1,
         )
       expect(await testERC20.balanceOf(treasury.address)).to.eq(treasuryBalance)
-      expect(await testERC20.balanceOf(borrower.address)).to.eq(borrowerBalance.sub(fees.lenderFee))
-      expect(await testERC20.balanceOf(lender.address)).to.eq(lenderBalance.add(fees.lenderFee))
+      expect(await testERC20.balanceOf(borrower.address)).to.eq(
+        borrowerBalance.sub(fees.lenderFee),
+      )
+      expect(await testERC20.balanceOf(lender.address)).to.eq(
+        lenderBalance.add(fees.lenderFee),
+      )
     })
   })
 

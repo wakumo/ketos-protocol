@@ -111,7 +111,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         nonReentrant
     {
         require(IERC721(params.collection).getApproved(params.tokenId) == address(this), "please approve NFT first");
-        // require(params.collection.call(abi.encodeWithSignature("getApproved(uint256)", params.tokenId)) == address(this), "please approve NFT first");
         // Send NFT to this contract to escrow
         _nftSafeTransfer(msg.sender, address(this), params.collection, params.tokenId, 1, 721);
         params.nftAmount = 1;
@@ -125,7 +124,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         nonReentrant
     {
         require(IERC1155(params.collection).isApprovedForAll(msg.sender, address(this)) == true, "please approve NFT first");
-        // require(params.collection.call(abi.encodeWithSignature("isApprovedForAll(address, address)", msg.sender, address(this))) == true, )
         // Send NFT to this contract to escrow
         _nftSafeTransfer(msg.sender, address(this), params.collection, params.tokenId, params.nftAmount, 1155);
         _createOffer(params, 1155);
@@ -133,13 +131,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     function _nftSafeTransfer(address _from, address _to, address _collection, uint256 _tokenId, uint256 _nftAmount, uint256 _nftType) internal {
         if (_nftType  == 1155) {
-            // IERC1155(_collection).safeTransferFrom(_from, _to, _tokenId, _nftAmount, "0x");
-            (bool success, ) = _collection.call(abi.encodeWithSignature("safeTransferFrom(address, address, uint256, uint256, bytes", _from, _to, _tokenId, _nftAmount, "0x"));
-            require(success == true, "fail_nft_transfer");
+            IERC1155(_collection).safeTransferFrom(_from, _to, _tokenId, _nftAmount, "0x");
         } else if (_nftType == 721) {
-            // IERC721(_collection).transferFrom(_from, _to, _tokenId);
-            (bool success, ) = _collection.call(abi.encodeWithSignature("transferFrom(address, address, uint256)", _from, _to, _tokenId));
-            require(success == true, "fail_nft_transfer");
+            IERC721(_collection).transferFrom(_from, _to, _tokenId);
         }
     }
 
@@ -148,8 +142,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             payable(_to).transfer(_amount);
         } else {
             IERC20(_token).transferFrom(_from, _to, _amount);
-            // (bool success, ) = _token.call(abi.encodeWithSignature("transferFrom(address, address, uint256)", _from, _to, _amount));
-            // require(success == true, "fail_erc20_transfer");
         }
     }
 
@@ -267,16 +259,13 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         (uint256 lenderFee, uint256 serviceFee, ) = quoteApplyAmounts(_offerId);
         uint256 borrowAmountAfterFee = offer.borrowAmount.sub(lenderFee);
         if (serviceFee > PawnShopLibrary.ZERO_SERVICE_FEE_RATE) {
-            // transfer fee to admin if service fee is lt zero fee rate
             borrowAmountAfterFee = borrowAmountAfterFee.sub(serviceFee);
             if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= (borrowAmountAfterFee + serviceFee), "invalid-amount");
             _safeTransfer(offer.borrowToken, msg.sender, treasury, serviceFee);
         } else {
             if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= borrowAmountAfterFee, "invalid-amount");
         }
-        // Send borrow amount after sub fee to borrower
         _safeTransfer(offer.borrowToken, msg.sender, offer.to, borrowAmountAfterFee);
-
 
         // Update end times
         offer.liquidationAt = offer.startLendingAt.add(offer.borrowPeriod).add(LIQUIDATION_PERIOD_IN_SECONDS);
@@ -326,8 +315,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Update offer if has changed?
         if (_borrowPeriod > 0) offer.borrowPeriod = _borrowPeriod;
         if (_borrowAmount > 0) offer.borrowAmount = _borrowAmount;
-        if (_borrowToken != offer.borrowToken) offer.borrowToken = _borrowToken;
-        offer.serviceFeeRate = _serviceFeeRates[offer.borrowToken];
+        if (_borrowToken != offer.borrowToken) {
+            offer.borrowToken = _borrowToken;
+            offer.serviceFeeRate = _serviceFeeRates[offer.borrowToken];
+        }
         (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, offer.borrowPeriod);
 
         // Validations
