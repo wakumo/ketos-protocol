@@ -216,7 +216,7 @@ describe('ERC1155 PawnShop', function () {
           data.nftAmount,
         ])
         .catch((err) => {
-          expect(err.message).to.include('invalid-payment-token')
+          expect(err.message).to.include('invalid_borrow_token')
         })
     })
 

@@ -6,10 +6,12 @@ library PawnShopLibrary {
     using SafeMath for uint256;
 
     uint256 private constant YEAR_IN_SECONDS = 31556926;
+    uint256 constant public ZERO_SERVICE_FEE_RATE = 1;
 
     // 1000000 is 100% * 10_000 PERCENT FACTOR
     function getFeeAmount(uint256 borrowAmount, uint256 feeRate, uint256 lendingPeriod) internal pure returns (uint256) {
-        require(feeRate > 0, 'invalid feeRate');
+        if (feeRate == ZERO_SERVICE_FEE_RATE) return ZERO_SERVICE_FEE_RATE;
+        require(feeRate > ZERO_SERVICE_FEE_RATE, 'invalid_service_fee_rate');
         return lendingPeriod.mul(borrowAmount).mul(feeRate).div(YEAR_IN_SECONDS).div(1000000);
     }
 

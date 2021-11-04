@@ -270,10 +270,7 @@ describe('ERC1155 PawnShop ETH', function () {
       // Change fees to 15% and 5%
       const newLenderFeeRate = 150_000
       const newServiceFeeRate = 50_000
-      await pawnShop.setServiceFeeRate(
-        utils.eth,
-        newServiceFeeRate,
-      )
+      await pawnShop.setServiceFeeRate(utils.eth, newServiceFeeRate)
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
