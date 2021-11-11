@@ -3,59 +3,59 @@ pragma solidity ^0.8.9;
 interface IPawnShopEvents {
 
     event OfferCreated(
-        bytes16 indexed _offerId,
-        address _collection,
-        uint256 _tokenId,
-        address _owner,
-        address _to,
-        uint256 _borrowAmount,
-        address _borrowToken,
-        uint256 _startApplyAt,
-        uint256 _closeApplyAt,
-        uint256 _borrowPeriod,
-        uint256 _nftType,
-        uint256 _nftAmount
+        bytes16 indexed offerId,
+        address collection,
+        uint256 tokenId,
+        address owner,
+        address to,
+        uint256 borrowAmount,
+        address borrowToken,
+        uint256 startApplyAt,
+        uint256 closeApplyAt,
+        uint256 borrowPeriod,
+        uint256 nftType,
+        uint256 nftAmount
     );
 
     event OfferApplied(
-        bytes16 indexed _offerId,
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        address _lender
+        bytes16 indexed offerId,
+        address indexed collection,
+        uint256 indexed tokenId,
+        address lender
     );
 
     event Repay(
-        bytes16 indexed _offerId,
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        address _repayer,
-        uint256 _borrowAmount
+        bytes16 indexed offerId,
+        address indexed collection,
+        uint256 indexed tokenId,
+        address repayer,
+        uint256 borrowAmount
     );
 
     event OfferUpdated(
-        bytes16 indexed _offerId,
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        uint256 _borrowAmount,
-        uint256 _borrowPeriod
+        bytes16 indexed offerId,
+        address indexed collection,
+        uint256 indexed tokenId,
+        uint256 borrowAmount,
+        uint256 borrowPeriod
     );
 
-    event OfferCancelled(bytes16 indexed _offerId, address indexed _collection, uint256 indexed _tokenId);
+    event OfferCancelled(bytes16 indexed offerId, address indexed collection, uint256 indexed tokenId);
 
     event ExtendLendingTimeRequested(
-        bytes16 indexed _offerId,
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        uint256 _lendingEndAt,
-        uint256 _liquidationAt,
-        uint256 _lendingFeeAmount,
-        uint256 _serviceFeeAmount
+        bytes16 indexed offerId,
+        address indexed collection,
+        uint256 indexed tokenId,
+        uint256 lendingEndAt,
+        uint256 liquidationAt,
+        uint256 lendingFeeAmount,
+        uint256 serviceFeeAmount
     );
 
     event NFTClaim(
-        bytes16 indexed _offerId,
-        address indexed _collection,
-        uint256 indexed _tokenId,
-        address _taker
+        bytes16 indexed offerId,
+        address indexed collection,
+        uint256 indexed tokenId,
+        address taker
     );
 }
