@@ -97,6 +97,8 @@ describe('ERC721 PawnShop', function () {
           utils.convertBig(borrowPeriod),
           721, // nft Type
           1, // default nftAmount of 721 in event is 1
+          data.lenderFeeRate,
+          data.serviceFeeRate
         )
     })
 
@@ -290,7 +292,7 @@ describe('ERC721 PawnShop', function () {
       // update change borrowAmount
       await pawnShop
         .connect(borrower)
-        .updateOffer(data.offerId, data.borrowAmount * 2, 0, testERC20.address)
+        .updateOffer(data.offerId, data.borrowAmount * 2, 0, data.lenderFeeRate)
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, utils.offerHash(data))
@@ -358,6 +360,7 @@ describe('ERC721 PawnShop', function () {
   describe('Service fee 0', async function () {
     beforeEach(async function () {
       await pawnShop.setServiceFeeRate(testERC20.address, 0)
+      data.serviceFeeRate = 0;
       await pawnShop
         .connect(borrower)
         .createOffer721([
@@ -579,7 +582,7 @@ describe('ERC721 PawnShop', function () {
     it('should raise when updating invalid borrowAmount', async function () {
       await pawnShop
         .connect(borrower)
-        .updateOffer(data.offerId, 0, 0, testERC20.address)
+        .updateOffer(data.offerId, 0, 0, data.lenderFeeRate)
         .catch((err) => {
           expect(err.message).to.include('Amount must be greater than 0')
         })
@@ -593,7 +596,7 @@ describe('ERC721 PawnShop', function () {
             data.offerId,
             data.borrowAmount * 2,
             0,
-            testERC20.address,
+            data.lenderFeeRate,
           ),
       )
         .to.emit(pawnShop.connect(borrower), 'OfferUpdated')
@@ -619,7 +622,7 @@ describe('ERC721 PawnShop', function () {
             data.offerId,
             0,
             data.borrowPeriod * 2,
-            testERC20.address,
+            data.lenderFeeRate,
           ),
       )
         .to.emit(pawnShop.connect(borrower), 'OfferUpdated')
@@ -1022,7 +1025,7 @@ describe('ERC721 PawnShop', function () {
 
     it('admin remove support token, and user cant create offer', async function () {
       const currentTime = utils.convertInt(await testERC20.currentTime())
-      await pawnShop.removeSupportTokens([testERC20.address])
+      await pawnShop.removeSupportedTokens([testERC20.address])
       await pawnShop
         .connect(borrower)
         .createOffer721([

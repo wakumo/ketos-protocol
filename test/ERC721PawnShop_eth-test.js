@@ -312,6 +312,7 @@ describe('ERC721 PawnShop ETH', function () {
   describe('Service fee 0', async function () {
     beforeEach(async function () {
       await pawnShop.setServiceFeeRate(utils.eth, 0)
+      data.serviceFeeRate = 0
       await pawnShop
         .connect(borrower)
         .createOffer721([

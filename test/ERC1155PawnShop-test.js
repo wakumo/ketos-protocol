@@ -103,6 +103,8 @@ describe('ERC1155 PawnShop', function () {
           utils.convertBig(borrowPeriod),
           1155, // nft Type
           data.nftAmount,
+          data.lenderFeeRate,
+          data.serviceFeeRate
         )
     })
 
@@ -298,7 +300,7 @@ describe('ERC1155 PawnShop', function () {
       // update change borrowAmount
       await pawnShop
         .connect(borrower)
-        .updateOffer(data.offerId, data.borrowAmount * 2, 0, testERC20.address)
+        .updateOffer(data.offerId, data.borrowAmount * 2, 0, data.lenderFeeRate)
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, utils.offerHash(data))
@@ -501,7 +503,7 @@ describe('ERC1155 PawnShop', function () {
     it('should raise when updating invalid borrowAmount', async function () {
       await pawnShop
         .connect(borrower)
-        .updateOffer(data.offerId, 0, 0, testERC20.address)
+        .updateOffer(data.offerId, 0, 0, data.lenderFeeRate)
         .catch((err) => {
           expect(err.message).to.include('Amount must be greater than 0')
         })
@@ -515,7 +517,7 @@ describe('ERC1155 PawnShop', function () {
             data.offerId,
             data.borrowAmount * 2,
             0,
-            testERC20.address,
+            data.lenderFeeRate,
           ),
       )
         .to.emit(pawnShop.connect(borrower), 'OfferUpdated')
@@ -541,7 +543,7 @@ describe('ERC1155 PawnShop', function () {
             data.offerId,
             0,
             data.borrowPeriod * 2,
-            testERC20.address,
+            data.lenderFeeRate,
           ),
       )
         .to.emit(pawnShop.connect(borrower), 'OfferUpdated')

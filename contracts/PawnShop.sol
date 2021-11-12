@@ -318,7 +318,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, borrowAmount);
     }
 
-    function updateOffer(bytes16 _offerId, uint256 _borrowAmount, uint256 _borrowPeriod, address _borrowToken)
+    function updateOffer(bytes16 _offerId, uint256 _borrowAmount, uint256 _borrowPeriod, uint256 _lenderFeeRate)
         external
         whenNotPaused
         override
@@ -329,15 +329,14 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.state == OfferState.OPEN, "only update unapply offer");
         require(offer.owner == msg.sender, "only owner can update offer");
         require(offer.lender == address(0), "only update unapply offer");
-        require(supportedTokens[_borrowToken] == true, "invalid_borrow_token");
+        require(_lenderFeeRate >= MIN_LENDER_FEE_RATE, "lt_min_lender_fee_RATE");
+        require(_lenderFeeRate <= MAX_LENDER_FEE_RATE, "gt_max_lender_fee_RATE");
 
         // Update offer if has changed?
         if (_borrowPeriod > 0) offer.borrowPeriod = _borrowPeriod;
         if (_borrowAmount > 0) offer.borrowAmount = _borrowAmount;
-        if (_borrowToken != offer.borrowToken) {
-            offer.borrowToken = _borrowToken;
-            offer.serviceFeeRate = _serviceFeeRates[offer.borrowToken];
-        }
+        offer.lenderFeeRate = _lenderFeeRate;
+
         (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, offer.borrowPeriod);
 
         // Validations

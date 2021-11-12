@@ -26,7 +26,7 @@ interface IPawnShopUserActions {
 
     function repay(bytes16 _offerId) external payable;
 
-    function updateOffer(bytes16 _offerId, uint256 _amount, uint256 _borrowPeriod, address _borrowToken) external;
+    function updateOffer(bytes16 _offerId, uint256 _amount, uint256 _borrowPeriod, uint256 _lenderFeeRate) external;
 
     function cancelOffer(bytes16 _offerId) external;
 
