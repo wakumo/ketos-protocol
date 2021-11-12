@@ -111,9 +111,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         nonReentrant
     {
         require(IERC721(params.collection).getApproved(params.tokenId) == address(this), "please approve NFT first");
+        require(params.nftAmount == 1, "nft_amount_should_be_1");
         // Send NFT to this contract to escrow
         _nftSafeTransfer(msg.sender, address(this), params.collection, params.tokenId, 1, 721);
-        params.nftAmount = 1;
         _createOffer(params, 721);
     }
 
