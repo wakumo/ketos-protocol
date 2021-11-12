@@ -46,7 +46,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     mapping(address => uint256) private _serviceFeeRates;
 
-    address payable public immutable treasury;
+    address payable public treasury;
 
     uint256 constant public LIQUIDATION_PERIOD_IN_SECONDS = 2592000;
     address constant public ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
