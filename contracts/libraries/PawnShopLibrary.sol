@@ -18,6 +18,8 @@ library PawnShopLibrary {
         address _collection,
         uint256 _tokenId,
         uint256 _borrowAmount,
+        uint256 _lenderFeeRate,
+        uint256 _serviceFeeRate,
         address _borrowToken,
         uint256 _borrowPeriod,
         uint256 _nftAmount
@@ -27,6 +29,8 @@ library PawnShopLibrary {
             _collection, 
             _tokenId, 
             _borrowAmount,
+            _lenderFeeRate,
+            _serviceFeeRate,
             _borrowToken,
             _borrowPeriod,
             _nftAmount
