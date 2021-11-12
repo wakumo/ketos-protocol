@@ -46,6 +46,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     mapping(address => uint256) private _serviceFeeRates;
 
+    mapping(address => bool) public supportTokens;
+
     address payable public treasury;
 
     uint256 constant public LIQUIDATION_PERIOD_IN_SECONDS = 2592000;
@@ -94,10 +96,20 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         }
     }
 
+    function addSupportToken(address _token) internal onlyOwner {
+        supportTokens[_token] = true;
+    }
+
+    function removeSupportTokens(address[] memory _tokens) external override {
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            supportTokens[_tokens[i]] = false;
+        }
+    }
+
     function setServiceFeeRate(address _token, uint256 _fee) public override onlyOwner {
-        require(_fee > 0, "invalid_service_fee"); // 0%
         require(_fee < 1000000, "invalid_service_fee"); // 100%
-        if (_fee > 0) _serviceFeeRates[_token] = _fee;
+        addSupportToken(_token);
+        _serviceFeeRates[_token] = _fee;
     }
 
     function getOffer(bytes16 _offerId) external view returns(Offer memory offer){
@@ -117,7 +129,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         _createOffer(params, 721);
     }
 
-    function createOffer1155(OfferCreateParam memory params)   
+    function createOffer1155(OfferCreateParam memory params)
         external
         override
         whenNotPaused
@@ -161,7 +173,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(_offers[params.offerId].collection == address(0), "offer-existed");
         require(params.lenderFeeRate >= MIN_LENDER_FEE_RATE, "lt_min_lender_fee_RATE");
         require(params.lenderFeeRate <= MAX_LENDER_FEE_RATE, "gt_max_lender_fee_RATE");
-        require(_serviceFeeRates[params.borrowToken] != 0, "invalid_borrow_token");
+        require(supportTokens[params.borrowToken] == true, "invalid_borrow_token");
 
         // Init offer
         Offer memory offer;
@@ -170,7 +182,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         {
             (uint256 lenderFee, uint256 serviceFee) = quoteFees(params.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, params.borrowPeriod);
             require(lenderFee > 0, "required minimum lender fee");
-            require(serviceFee> 0, "required minimum service fee");
         }
         // Set offer informations
         offer.owner = msg.sender;
@@ -206,13 +217,13 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     }
 
     function getOfferHash(
-        bytes16 _offerId, 
-        address _collection, 
-        uint256 _tokenId, 
-        uint256 _borrowAmount, 
-        address _borrowToken, 
-        uint256 _borrowPeriod, 
-        uint256 _nftAmount 
+        bytes16 _offerId,
+        address _collection,
+        uint256 _tokenId,
+        uint256 _borrowAmount,
+        address _borrowToken,
+        uint256 _borrowPeriod,
+        uint256 _nftAmount
     ) public view override returns (bytes32) {
         return PawnShopLibrary.offerHash(
             _offerId,
@@ -257,14 +268,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
         // Calculate Fees
         (uint256 lenderFee, uint256 serviceFee, ) = quoteApplyAmounts(_offerId);
-        uint256 borrowAmountAfterFee = offer.borrowAmount.sub(lenderFee);
-        if (serviceFee > PawnShopLibrary.ZERO_SERVICE_FEE_RATE) {
-            borrowAmountAfterFee = borrowAmountAfterFee.sub(serviceFee);
-            if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= (borrowAmountAfterFee + serviceFee), "invalid-amount");
-            _safeTransfer(offer.borrowToken, msg.sender, treasury, serviceFee);
-        } else {
-            if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= borrowAmountAfterFee, "invalid-amount");
-        }
+        uint256 borrowAmountAfterFee = offer.borrowAmount.sub(lenderFee).sub(serviceFee);
+        if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= (borrowAmountAfterFee.add(serviceFee)), "invalid-amount");
+
+        if (serviceFee > 0) _safeTransfer(offer.borrowToken, msg.sender, treasury, serviceFee);
         _safeTransfer(offer.borrowToken, msg.sender, offer.to, borrowAmountAfterFee);
 
         // Update end times
@@ -313,7 +320,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.state == OfferState.OPEN, "only update unapply offer");
         require(offer.owner == msg.sender, "only owner can update offer");
         require(offer.lender == address(0), "only update unapply offer");
-        require(_serviceFeeRates[_borrowToken] != 0, "invalid_borrow_token");
+        require(supportTokens[_borrowToken] == true, "invalid_borrow_token");
 
         // Update offer if has changed?
         if (_borrowPeriod > 0) offer.borrowPeriod = _borrowPeriod;
@@ -326,7 +333,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
         // Validations
         require(lenderFee > 0, "required minimum lender fee");
-        require(serviceFee> 0, "required minimum service fee");
         _offers[_offerId] = offer;
         emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod);
     }
@@ -408,14 +414,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Calculate Fees
         (uint256 lenderFee, uint256 serviceFee) = quoteFees(offer.borrowAmount, offer.lenderFeeRate, offer.serviceFeeRate, _extendPeriod);
         require(lenderFee > 0, "required minimum lender fee");
-        require(serviceFee > 0, "required minimum service fee");
 
-        if (serviceFee > PawnShopLibrary.ZERO_SERVICE_FEE_RATE) {
-            if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= (lenderFee + serviceFee), "invalid-amount");
-            _safeTransfer(offer.borrowToken, msg.sender, treasury, serviceFee);
-        } else {
-            if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= lenderFee, "invalid-amount");
-        }
+        if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= (lenderFee + serviceFee), "invalid-amount");
+        if (serviceFee > 0) _safeTransfer(offer.borrowToken, msg.sender, treasury, serviceFee);
         _safeTransfer(offer.borrowToken, msg.sender, offer.lender, lenderFee);
 
         // Update end times

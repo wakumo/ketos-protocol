@@ -5,7 +5,7 @@ const utils = require('../utils/utils.js')
 
 describe('ERC721 PawnShop ETH', function () {
   let treasury, borrower, lender, addrs
-  let testERC20, testERC721, pawnShop
+  let testERC721, pawnShop
   const tokenId = 1
   const borrowAmount = ethers.utils.parseEther('0.1')
   const wrongAmount = ethers.utils.parseEther('0.09')
@@ -306,6 +306,84 @@ describe('ERC721 PawnShop ETH', function () {
       const newOfferSetting = await pawnShop.getOffer(data.offerId)
       expect(newOfferSetting.lenderFeeRate).to.eq(offer.lenderFeeRate)
       expect(newOfferSetting.serviceFeeRate).to.eq(offer.serviceFeeRate)
+    })
+  })
+
+  describe('Service fee 0', async function () {
+    beforeEach(async function () {
+      await pawnShop.setServiceFeeRate(utils.eth, 0)
+      await pawnShop
+        .connect(borrower)
+        .createOffer721([
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          data.to,
+          data.borrowAmount,
+          data.borrowToken,
+          data.borrowPeriod,
+          data.startApplyAt,
+          data.closeApplyAt,
+          lenderFeeRate,
+          1,
+        ])
+    })
+    it('Lender apply, treasury wont get nothing & borrower just lost lender fee only', async function () {
+      treasuryBalance = await treasury.getBalance()
+      borrowerBalance = await borrower.getBalance()
+      quoteApplyAmounts = await pawnShop.quoteApplyAmounts(data.offerId)
+      await expect(
+        pawnShop
+          .connect(lender)
+          .applyOffer(data.offerId, utils.offerHash(data), {
+            value: data.borrowAmount,
+          }),
+      )
+        .to.emit(pawnShop, 'OfferApplied')
+        .withArgs(
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          pawnShop.connect(lender).signer.address,
+        )
+      expect(await treasury.getBalance()).to.eq(treasuryBalance)
+      expect(await borrower.getBalance()).to.eq(
+        borrowerBalance.add(quoteApplyAmounts.approvedAmount),
+      )
+    })
+    it('Borrower extend not cost service fee', async function () {
+      await pawnShop
+        .connect(lender)
+        .applyOffer(data.offerId, utils.offerHash(data), {
+          value: data.borrowAmount,
+        })
+      fees = await pawnShop.quoteExtendFees(data.offerId, data.borrowPeriod)
+      expect(fees.serviceFee).to.eq(0)
+      offer = await pawnShop.getOffer(data.offerId)
+      treasuryBalance = await treasury.getBalance()
+      borrowerBalance = await borrower.getBalance()
+      lenderBalance = await lender.getBalance()
+      await expect(
+        pawnShop
+          .connect(borrower)
+          .extendLendingTime(data.offerId, data.borrowPeriod, {
+            value: fees.lenderFee,
+          }),
+      )
+        .to.emit(pawnShop, 'ExtendLendingTimeRequested')
+        .withArgs(
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          offer.startLendingAt.add(data.borrowPeriod * 2),
+          offer.liquidationAt.add(data.borrowPeriod),
+          fees.lenderFee,
+          0,
+        )
+      expect(await treasury.getBalance()).to.eq(treasuryBalance)
+      expect(await lender.getBalance()).to.eq(
+        lenderBalance.add(fees.lenderFee),
+      )
     })
   })
 })

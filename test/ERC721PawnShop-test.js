@@ -334,7 +334,7 @@ describe('ERC721 PawnShop', function () {
 
     it('should apply success & not change new service fee', async function () {
       testERC20.connect(lender).approve(pawnShop.address, data.borrowAmount)
-      pawnShop.setServiceFeeRate(testERC20.address, 1)
+      pawnShop.setServiceFeeRate(testERC20.address, 0)
       treasuryBalance = await testERC20.balanceOf(treasury.address)
       await expect(
         pawnShop
@@ -357,7 +357,7 @@ describe('ERC721 PawnShop', function () {
   // Token with service fee is 0
   describe('Service fee 0', async function () {
     beforeEach(async function () {
-      await pawnShop.setServiceFeeRate(testERC20.address, 1)
+      await pawnShop.setServiceFeeRate(testERC20.address, 0)
       await pawnShop
         .connect(borrower)
         .createOffer721([
@@ -402,7 +402,7 @@ describe('ERC721 PawnShop', function () {
         .connect(lender)
         .applyOffer(data.offerId, utils.offerHash(data))
       fees = await pawnShop.quoteExtendFees(data.offerId, data.borrowPeriod)
-      expect(fees.serviceFee).to.eq(1)
+      expect(fees.serviceFee).to.eq(0)
       offer = await pawnShop.getOffer(data.offerId)
       treasuryBalance = await testERC20.balanceOf(treasury.address)
       borrowerBalance = await testERC20.balanceOf(borrower.address)
@@ -423,7 +423,7 @@ describe('ERC721 PawnShop', function () {
           offer.startLendingAt.add(data.borrowPeriod * 2),
           offer.liquidationAt.add(data.borrowPeriod),
           fees.lenderFee,
-          1,
+          0,
         )
       expect(await testERC20.balanceOf(treasury.address)).to.eq(treasuryBalance)
       expect(await testERC20.balanceOf(borrower.address)).to.eq(
@@ -1018,6 +1018,29 @@ describe('ERC721 PawnShop', function () {
       const offer = await pawnShop.getOffer(data.offerId)
       expect(offer.lenderFeeRate).to.not.eq(11000)
       expect(offer.serviceFeeRate).to.not.eq(2000)
+    })
+
+    it('admin remove support token, and user cant create offer', async function () {
+      const currentTime = utils.convertInt(await testERC20.currentTime())
+      await pawnShop.removeSupportTokens([testERC20.address])
+      await pawnShop
+        .connect(borrower)
+        .createOffer721([
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          data.to,
+          data.borrowAmount,
+          data.borrowToken,
+          data.borrowPeriod,
+          currentTime,
+          currentTime + 60 * 60 * 24 * 7,
+          lenderFeeRate,
+          1,
+        ])
+        .catch((err) => {
+          expect(err.message).to.include('invalid_borrow_token')
+        })
     })
   })
 
