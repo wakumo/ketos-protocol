@@ -21,7 +21,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         uint256 lenderFeeRate;
         uint256 serviceFeeRate;
     }
-
+    enum OfferState { OPEN, LENDING, CANCELED, REPAID, CLAIMED }
     struct Offer {
         address owner;
         address lender;
@@ -39,14 +39,14 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         uint256 nftAmount;
         address collection;
         uint256 tokenId;
-        bool    isLending;
+        OfferState state;
     }
 
     mapping(bytes16 => Offer) private _offers;
 
     mapping(address => uint256) private _serviceFeeRates;
 
-    address payable public treasury;
+    address payable public immutable treasury;
 
     uint256 constant public LIQUIDATION_PERIOD_IN_SECONDS = 2592000;
     address constant public ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
@@ -185,6 +185,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         offer.borrowPeriod = params.borrowPeriod;
         offer.nftType = _nftType;
         offer.nftAmount = params.nftAmount;
+        offer.state = OfferState.OPEN;
 
         _offers[params.offerId] = offer;
         // Emit event
@@ -232,10 +233,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         payable
         nonReentrant
     {
-        Offer storage offer = _offers[_offerId];
+        Offer memory offer = _offers[_offerId];
 
         // Validations
-        require(offer.isLending == false, "apply-non-open-offer");
+        require(offer.state == OfferState.OPEN, "apply-non-open-offer");
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
         // Check data integrity of the offer
         // Make sure the borrower does not change any information at applying time
@@ -251,7 +252,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offerHash == _offerHash, "offer informations has changed");
 
         // Update offer informations
-        offer.isLending = true;
         offer.lender = msg.sender;
         offer.startLendingAt = block.timestamp;
 
@@ -269,7 +269,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
         // Update end times
         offer.liquidationAt = offer.startLendingAt.add(offer.borrowPeriod).add(LIQUIDATION_PERIOD_IN_SECONDS);
-
+        offer.state = OfferState.LENDING;
+        _offers[_offerId] = offer;
         emit OfferApplied(_offerId, offer.collection, offer.tokenId, msg.sender);
     }
 
@@ -280,10 +281,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         payable
         nonReentrant
     {
-        Offer storage offer = _offers[_offerId];
+        Offer memory offer = _offers[_offerId];
 
         // Validations
-        require(offer.isLending == true, "repay-in-progress-offer-only");
+        require(offer.state == OfferState.LENDING, "repay-in-progress-offer-only");
         require(offer.startLendingAt.add(offer.borrowPeriod) >= block.timestamp, "overdue loan");
         require(offer.owner == msg.sender, "only owner can repay and get NFT");
 
@@ -296,7 +297,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
         // clone amount value to emit
         uint256 borrowAmount = offer.borrowAmount;
-
+        offer.state = OfferState.REPAID;
+        _offers[_offerId] = offer;
         emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, borrowAmount);
     }
 
@@ -305,9 +307,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         whenNotPaused
         override
     {
-        Offer storage offer = _offers[_offerId];
+        Offer memory offer = _offers[_offerId];
 
         // Validations
+        require(offer.state == OfferState.OPEN, "only update unapply offer");
         require(offer.owner == msg.sender, "only owner can update offer");
         require(offer.lender == address(0), "only update unapply offer");
         require(_serviceFeeRates[_borrowToken] != 0, "invalid_borrow_token");
@@ -324,7 +327,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Validations
         require(lenderFee > 0, "required minimum lender fee");
         require(serviceFee> 0, "required minimum service fee");
-
+        _offers[_offerId] = offer;
         emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod);
     }
 
@@ -333,7 +336,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         whenNotPaused
         override
     {
-        Offer storage offer = _offers[_offerId];
+        Offer memory offer = _offers[_offerId];
 
         // Validations
         require(
@@ -341,10 +344,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             "only owner can cancel offer"
         );
         require(offer.lender == address(0), "only update unapply offer");
-
+        offer.state = OfferState.CANCELED;
         // Send NFT back to borrower
         _nftSafeTransfer(address(this), msg.sender, offer.collection, offer.tokenId, offer.nftAmount, offer.nftType);
-
         emit OfferCancelled(_offerId, offer.collection, offer.tokenId);
     }
 
@@ -396,11 +398,11 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         nonReentrant
         onlyBorrowPeriodGreaterThanZero(_extendPeriod)
     {
-        Offer storage offer = _offers[_offerId];
+        Offer memory offer = _offers[_offerId];
 
         // Validations
         require(offer.owner == msg.sender, "only-owner-can-extend-lending-time");
-        require(offer.isLending == true, "can only extend in progress offer");
+        require(offer.state == OfferState.LENDING, "can only extend in progress offer");
         require(offer.startLendingAt.add(offer.borrowPeriod) >= block.timestamp, "lending-time-closed");
 
         // Calculate Fees
@@ -420,6 +422,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         offer.borrowPeriod = offer.borrowPeriod.add(_extendPeriod);
         offer.liquidationAt = offer.liquidationAt.add(_extendPeriod);
 
+        _offers[_offerId] = offer;
         emit ExtendLendingTimeRequested(
             _offerId,
             offer.collection,
@@ -442,7 +445,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         override
         nonReentrant
     {
-        Offer storage offer = _offers[_offerId];
+        Offer memory offer = _offers[_offerId];
 
         // Validations
         require(block.timestamp > offer.startLendingAt.add(offer.borrowPeriod), "can not claim in lending period");
@@ -459,7 +462,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         );
         // Send NFT to taker
         _nftSafeTransfer(address(this), msg.sender, offer.collection, offer.tokenId, offer.nftAmount, offer.nftType);
-
+        offer.state = OfferState.CLAIMED;
+        _offers[_offerId] = offer;
         emit NFTClaim(_offerId, offer.collection, offer.tokenId, msg.sender);
     }
 
