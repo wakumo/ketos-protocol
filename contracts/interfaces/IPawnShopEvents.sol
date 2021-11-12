@@ -14,7 +14,9 @@ interface IPawnShopEvents {
         uint256 closeApplyAt,
         uint256 borrowPeriod,
         uint256 nftType,
-        uint256 nftAmount
+        uint256 nftAmount,
+        uint256 lenderFeeRate,
+        uint256 serviceFeeRate
     );
 
     event OfferApplied(

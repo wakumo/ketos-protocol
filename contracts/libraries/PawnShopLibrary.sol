@@ -9,7 +9,6 @@ library PawnShopLibrary {
 
     // 1000000 is 100% * 10_000 PERCENT FACTOR
     function getFeeAmount(uint256 borrowAmount, uint256 feeRate, uint256 lendingPeriod) internal pure returns (uint256) {
-        require(feeRate > 0, 'invalid feeRate');
         return lendingPeriod.mul(borrowAmount).mul(feeRate).div(YEAR_IN_SECONDS).div(1000000);
     }
 
@@ -19,6 +18,8 @@ library PawnShopLibrary {
         address _collection,
         uint256 _tokenId,
         uint256 _borrowAmount,
+        uint256 _lenderFeeRate,
+        uint256 _serviceFeeRate,
         address _borrowToken,
         uint256 _borrowPeriod,
         uint256 _nftAmount
@@ -28,6 +29,8 @@ library PawnShopLibrary {
             _collection, 
             _tokenId, 
             _borrowAmount,
+            _lenderFeeRate,
+            _serviceFeeRate,
             _borrowToken,
             _borrowPeriod,
             _nftAmount

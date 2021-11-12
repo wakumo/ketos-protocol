@@ -28,7 +28,7 @@ describe('ERC1155 PawnShop ETH', function () {
     pawnShop = await PawnShop.deploy(treasury.address)
     await pawnShop.deployed()
     // set fee
-    await pawnShop.setTokenFeeRates(utils.eth, lenderFeeRate, serviceFeeRate) // 10% & 2%
+    await pawnShop.setServiceFeeRate(utils.eth, serviceFeeRate) // 10% & 2%
     // let currentTime = utils.convertInt(await network.provider.send("evm_mine"));
     const currentTime = utils.convertInt(await testERC1155.currentTime())
     data = {
@@ -65,7 +65,7 @@ describe('ERC1155 PawnShop ETH', function () {
     beforeEach(async function () {
       await pawnShop
         .connect(borrower)
-        .createOffer1155(
+        .createOffer1155([
           data.offerId,
           data.collection,
           data.tokenId,
@@ -75,8 +75,9 @@ describe('ERC1155 PawnShop ETH', function () {
           data.borrowPeriod,
           data.startApplyAt,
           data.closeApplyAt,
+          lenderFeeRate,
           data.nftAmount,
-        )
+        ])
     })
     afterEach(async function () {
       await pawnShop
@@ -122,7 +123,7 @@ describe('ERC1155 PawnShop ETH', function () {
       const currentTime = utils.convertInt(await testERC1155.currentTime())
       await pawnShop
         .connect(borrower)
-        .createOffer1155(
+        .createOffer1155([
           data.offerId,
           data.collection,
           data.tokenId,
@@ -132,8 +133,9 @@ describe('ERC1155 PawnShop ETH', function () {
           data.borrowPeriod,
           currentTime,
           currentTime + 60 * 60 * 24 * 7,
+          lenderFeeRate,
           data.nftAmount,
-        )
+        ])
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, utils.offerHash(data), {
@@ -182,7 +184,7 @@ describe('ERC1155 PawnShop ETH', function () {
       const currentTime = utils.convertInt(await testERC1155.currentTime())
       await pawnShop
         .connect(borrower)
-        .createOffer1155(
+        .createOffer1155([
           data.offerId,
           data.collection,
           data.tokenId,
@@ -192,8 +194,9 @@ describe('ERC1155 PawnShop ETH', function () {
           data.borrowPeriod,
           currentTime,
           currentTime + 60 * 60 * 24 * 7,
+          lenderFeeRate,
           data.nftAmount,
-        )
+        ])
       // apply offer
       let quoteApply = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
@@ -220,17 +223,16 @@ describe('ERC1155 PawnShop ETH', function () {
       )
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
-      const fees = await pawnShop.getSystemTokenFeeRates(utils.eth)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
       const newLiquidationPeriod = offer.liquidationAt.add(extendLendingPeriod)
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
-        .mul(fees.lenderFeeRate)
+        .mul(offer.lenderFeeRate)
         .div(YEAR_IN_SECONDS)
         .div(1000000)
       const serviceFee = extendLendingPeriod
         .mul(offer.borrowAmount)
-        .mul(fees.serviceFeeRate)
+        .mul(offer.serviceFeeRate)
         .div(YEAR_IN_SECONDS)
         .div(1000000)
 
@@ -264,28 +266,23 @@ describe('ERC1155 PawnShop ETH', function () {
       )
     })
 
-    it('should apply new fees for next extendTime', async function () {
+    it('shouldnt apply new fees for next extendTime', async function () {
       // Change fees to 15% and 5%
       const newLenderFeeRate = 150_000
       const newServiceFeeRate = 50_000
-      await pawnShop.setTokenFeeRates(
-        utils.eth,
-        newLenderFeeRate,
-        newServiceFeeRate,
-      )
+      await pawnShop.setServiceFeeRate(utils.eth, newServiceFeeRate)
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
-      const fees = await pawnShop.getSystemTokenFeeRates(utils.eth)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
       const newLiquidationPeriod = offer.liquidationAt.add(extendLendingPeriod)
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
-        .mul(fees.lenderFeeRate)
+        .mul(offer.lenderFeeRate)
         .div(YEAR_IN_SECONDS)
         .div(1000000)
       const serviceFee = extendLendingPeriod
         .mul(offer.borrowAmount)
-        .mul(fees.serviceFeeRate)
+        .mul(offer.serviceFeeRate)
         .div(YEAR_IN_SECONDS)
         .div(1000000)
       const balanceTreasury = await treasury.getBalance()
@@ -312,8 +309,8 @@ describe('ERC1155 PawnShop ETH', function () {
       expect(await treasury.getBalance()).to.eq(balanceTreasury.add(serviceFee))
       expect(await lender.getBalance()).to.eq(balanceLender.add(lenderFee))
       const newOfferSetting = await pawnShop.getOffer(data.offerId)
-      expect(newOfferSetting.lenderFeeRate).to.eq(newLenderFeeRate)
-      expect(newOfferSetting.serviceFeeRate).to.eq(newServiceFeeRate)
+      expect(newOfferSetting.lenderFeeRate).to.eq(offer.lenderFeeRate)
+      expect(newOfferSetting.serviceFeeRate).to.eq(offer.serviceFeeRate)
     })
   })
 })

@@ -5,7 +5,7 @@ const utils = require('../utils/utils.js')
 
 describe('ERC721 PawnShop ETH', function () {
   let treasury, borrower, lender, addrs
-  let testERC20, testERC721, pawnShop
+  let testERC721, pawnShop
   const tokenId = 1
   const borrowAmount = ethers.utils.parseEther('0.1')
   const wrongAmount = ethers.utils.parseEther('0.09')
@@ -27,7 +27,7 @@ describe('ERC721 PawnShop ETH', function () {
     pawnShop = await PawnShop.deploy(treasury.address)
     await pawnShop.deployed()
     // set fee
-    await pawnShop.setTokenFeeRates(utils.eth, lenderFeeRate, serviceFeeRate) // 10% & 2%
+    await pawnShop.setServiceFeeRate(utils.eth, serviceFeeRate) // 10% & 2%
     // let currentTime = utils.convertInt(await network.provider.send("evm_mine"));
     const currentTime = utils.convertInt(await testERC721.currentTime())
     data = {
@@ -60,7 +60,7 @@ describe('ERC721 PawnShop ETH', function () {
     beforeEach(async function () {
       await pawnShop
         .connect(borrower)
-        .createOffer721(
+        .createOffer721([
           data.offerId,
           data.collection,
           data.tokenId,
@@ -70,7 +70,9 @@ describe('ERC721 PawnShop ETH', function () {
           data.borrowPeriod,
           data.startApplyAt,
           data.closeApplyAt,
-        )
+          lenderFeeRate,
+          1,
+        ])
     })
     afterEach(async function () {
       await pawnShop
@@ -116,7 +118,7 @@ describe('ERC721 PawnShop ETH', function () {
       const currentTime = utils.convertInt(await testERC721.currentTime())
       await pawnShop
         .connect(borrower)
-        .createOffer721(
+        .createOffer721([
           data.offerId,
           data.collection,
           data.tokenId,
@@ -126,7 +128,9 @@ describe('ERC721 PawnShop ETH', function () {
           data.borrowPeriod,
           currentTime,
           currentTime + 60 * 60 * 24 * 7,
-        )
+          lenderFeeRate,
+          1,
+        ])
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, utils.offerHash(data), {
@@ -175,7 +179,7 @@ describe('ERC721 PawnShop ETH', function () {
       const currentTime = utils.convertInt(await testERC721.currentTime())
       await pawnShop
         .connect(borrower)
-        .createOffer721(
+        .createOffer721([
           data.offerId,
           data.collection,
           data.tokenId,
@@ -185,7 +189,9 @@ describe('ERC721 PawnShop ETH', function () {
           data.borrowPeriod,
           currentTime,
           currentTime + 60 * 60 * 24 * 7,
-        )
+          lenderFeeRate,
+          1,
+        ])
       // apply offer
       let quoteApply = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
@@ -212,17 +218,16 @@ describe('ERC721 PawnShop ETH', function () {
       )
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
-      const fees = await pawnShop.getSystemTokenFeeRates(utils.eth)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
       const newLiquidationPeriod = offer.liquidationAt.add(extendLendingPeriod)
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
-        .mul(fees.lenderFeeRate)
+        .mul(offer.lenderFeeRate)
         .div(YEAR_IN_SECONDS)
         .div(1000000)
       const serviceFee = extendLendingPeriod
         .mul(offer.borrowAmount)
-        .mul(fees.serviceFeeRate)
+        .mul(offer.serviceFeeRate)
         .div(YEAR_IN_SECONDS)
         .div(1000000)
 
@@ -256,28 +261,23 @@ describe('ERC721 PawnShop ETH', function () {
       )
     })
 
-    it('should apply new fees for next extendTime', async function () {
+    it('shouldnt apply new fees for next extendTime', async function () {
       // Change fees to 15% and 5%
       const newLenderFeeRate = 150_000
       const newServiceFeeRate = 50_000
-      await pawnShop.setTokenFeeRates(
-        utils.eth,
-        newLenderFeeRate,
-        newServiceFeeRate,
-      )
+      await pawnShop.setServiceFeeRate(utils.eth, newServiceFeeRate)
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
-      const fees = await pawnShop.getSystemTokenFeeRates(utils.eth)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
       const newLiquidationPeriod = offer.liquidationAt.add(extendLendingPeriod)
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
-        .mul(fees.lenderFeeRate)
+        .mul(offer.lenderFeeRate)
         .div(YEAR_IN_SECONDS)
         .div(1000000)
       const serviceFee = extendLendingPeriod
         .mul(offer.borrowAmount)
-        .mul(fees.serviceFeeRate)
+        .mul(offer.serviceFeeRate)
         .div(YEAR_IN_SECONDS)
         .div(1000000)
       const balanceTreasury = await treasury.getBalance()
@@ -301,15 +301,90 @@ describe('ERC721 PawnShop ETH', function () {
         )
 
       // check fee has been transfer yet
-      expect(await treasury.getBalance()).to.eq(
-        balanceTreasury.add(serviceFee),
-      )
-      expect(await lender.getBalance()).to.eq(
-        balanceLender.add(lenderFee),
-      )
+      expect(await treasury.getBalance()).to.eq(balanceTreasury.add(serviceFee))
+      expect(await lender.getBalance()).to.eq(balanceLender.add(lenderFee))
       const newOfferSetting = await pawnShop.getOffer(data.offerId)
-      expect(newOfferSetting.lenderFeeRate).to.eq(newLenderFeeRate)
-      expect(newOfferSetting.serviceFeeRate).to.eq(newServiceFeeRate)
+      expect(newOfferSetting.lenderFeeRate).to.eq(offer.lenderFeeRate)
+      expect(newOfferSetting.serviceFeeRate).to.eq(offer.serviceFeeRate)
+    })
+  })
+
+  describe('Service fee 0', async function () {
+    beforeEach(async function () {
+      await pawnShop.setServiceFeeRate(utils.eth, 0)
+      data.serviceFeeRate = 0
+      await pawnShop
+        .connect(borrower)
+        .createOffer721([
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          data.to,
+          data.borrowAmount,
+          data.borrowToken,
+          data.borrowPeriod,
+          data.startApplyAt,
+          data.closeApplyAt,
+          lenderFeeRate,
+          1,
+        ])
+    })
+    it('Lender apply, treasury wont get nothing & borrower just lost lender fee only', async function () {
+      treasuryBalance = await treasury.getBalance()
+      borrowerBalance = await borrower.getBalance()
+      quoteApplyAmounts = await pawnShop.quoteApplyAmounts(data.offerId)
+      await expect(
+        pawnShop
+          .connect(lender)
+          .applyOffer(data.offerId, utils.offerHash(data), {
+            value: data.borrowAmount,
+          }),
+      )
+        .to.emit(pawnShop, 'OfferApplied')
+        .withArgs(
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          pawnShop.connect(lender).signer.address,
+        )
+      expect(await treasury.getBalance()).to.eq(treasuryBalance)
+      expect(await borrower.getBalance()).to.eq(
+        borrowerBalance.add(quoteApplyAmounts.approvedAmount),
+      )
+    })
+    it('Borrower extend not cost service fee', async function () {
+      await pawnShop
+        .connect(lender)
+        .applyOffer(data.offerId, utils.offerHash(data), {
+          value: data.borrowAmount,
+        })
+      fees = await pawnShop.quoteExtendFees(data.offerId, data.borrowPeriod)
+      expect(fees.serviceFee).to.eq(0)
+      offer = await pawnShop.getOffer(data.offerId)
+      treasuryBalance = await treasury.getBalance()
+      borrowerBalance = await borrower.getBalance()
+      lenderBalance = await lender.getBalance()
+      await expect(
+        pawnShop
+          .connect(borrower)
+          .extendLendingTime(data.offerId, data.borrowPeriod, {
+            value: fees.lenderFee,
+          }),
+      )
+        .to.emit(pawnShop, 'ExtendLendingTimeRequested')
+        .withArgs(
+          data.offerId,
+          data.collection,
+          data.tokenId,
+          offer.startLendingAt.add(data.borrowPeriod * 2),
+          offer.liquidationAt.add(data.borrowPeriod),
+          fees.lenderFee,
+          0,
+        )
+      expect(await treasury.getBalance()).to.eq(treasuryBalance)
+      expect(await lender.getBalance()).to.eq(
+        lenderBalance.add(fees.lenderFee),
+      )
     })
   })
 })
