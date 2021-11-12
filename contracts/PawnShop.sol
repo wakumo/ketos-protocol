@@ -98,7 +98,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         }
     }
 
-    function addSupportedToken(address _token) internal onlyOwner {
+    function _addSupportedToken(address _token) internal onlyOwner {
         supportedTokens[_token] = true;
     }
 
@@ -110,7 +110,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     function setServiceFeeRate(address _token, uint256 _feeRate) public override onlyOwner {
         require(_feeRate < 1000000, "invalid_service_fee"); // 100%
-        addSupportedToken(_token);
+        _addSupportedToken(_token);
         _serviceFeeRates[_token] = _feeRate;
     }
 
