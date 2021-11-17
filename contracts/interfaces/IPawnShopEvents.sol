@@ -1,4 +1,4 @@
-pragma solidity ^0.8.9;
+pragma solidity 0.8.9;
 
 interface IPawnShopEvents {
 
@@ -49,7 +49,6 @@ interface IPawnShopEvents {
         address indexed collection,
         uint256 indexed tokenId,
         uint256 lendingEndAt,
-        uint256 liquidationAt,
         uint256 lendingFeeAmount,
         uint256 serviceFeeAmount
     );
