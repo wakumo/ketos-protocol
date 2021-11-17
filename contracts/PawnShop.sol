@@ -2,7 +2,6 @@
 pragma solidity 0.8.9;
 pragma experimental ABIEncoderV2;
 
-// import "hardhat/console.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -16,6 +15,23 @@ import './libraries/PawnShopLibrary.sol';
 
 contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
+
+    // EIP712 Domain Name value
+    string constant private EIP712_DOMAIN_NAME = "PawnShop";
+
+    // EIP712 Domain Version value
+    string constant private EIP712_DOMAIN_VERSION = "1";
+
+    // Hash of the EIP712 Domain Separator Schema
+    /* solium-disable-next-line indentation */
+    bytes32 constant private EIP712_DOMAIN_SEPARATOR_SCHEMA_HASH = keccak256(abi.encodePacked(
+        "EIP712Domain(",
+        "string name,",
+        "string version,",
+        "uint256 chainId,",
+        "address verifyingContract",
+        ")"
+    ));
 
     struct FeeRate {
         uint256 lenderFeeRate;
@@ -43,6 +59,35 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         OfferState state;
     }
 
+    // Hash of the EIP712 Domain Separator data
+    bytes32 public EIP712_DOMAIN_HASH;
+
+    // EIP191 header for EIP712 prefix
+    bytes2 constant private EIP191_HEADER = 0x1901;
+
+    // Hash of the EIP712 Offer struct
+    /* solium-disable-next-line indentation */
+    bytes32 constant private EIP712_OFFER_STRUCT_SCHEMA_HASH = keccak256(abi.encodePacked(
+        "Offer(",
+        "address owner,",
+        "address lender,",
+        "uint256 borrowAmount,",
+        "address borrowToken,",
+        "address to,",
+        "uint256 startApplyAt,",
+        "uint256 closeApplyAt",
+        "uint256 borrowPeriod,",
+        "uint256 startLendingAt,",
+        "uint256 lenderFeeRate,",
+        "uint256 serviceFeeRate,",
+        "uint256 nftType,",
+        "uint256 nftAmount,",
+        "address collection,",
+        "uint256 tokenId,",
+        "OfferState state,",
+        ")"
+    ));
+
     mapping(bytes16 => Offer) private _offers;
 
     mapping(address => uint256) private _serviceFeeRates;
@@ -58,6 +103,15 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     constructor(address payable _treasury) {
         treasury = _treasury;
+
+        /* solium-disable-next-line indentation */
+        EIP712_DOMAIN_HASH = keccak256(abi.encode(
+            EIP712_DOMAIN_SEPARATOR_SCHEMA_HASH,
+            keccak256(bytes(EIP712_DOMAIN_NAME)),
+            keccak256(bytes(EIP712_DOMAIN_VERSION)),
+            block.chainid,
+            address(this)
+        ));
     }
 
     function pause() external onlyOwner {
@@ -221,28 +275,32 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         );
     }
 
-    function getOfferHash(
-        bytes16 _offerId,
-        address _collection,
-        uint256 _tokenId,
-        uint256 _borrowAmount,
-        uint256 _lenderFeeRate,
-        uint256 _serviceFeeRate,
-        address _borrowToken,
-        uint256 _borrowPeriod,
-        uint256 _nftAmount
-    ) public view override returns (bytes32) {
-        return PawnShopLibrary.offerHash(
-            _offerId,
-            _collection,
-            _tokenId,
-            _borrowAmount,
-            _lenderFeeRate,
-            _serviceFeeRate,
-            _borrowToken,
-            _borrowPeriod,
-            _nftAmount
-        );
+
+    /**
+     * Returns the EIP712 hash of an offer.
+     */
+    function getOfferHash(bytes16 _offerId)
+        public
+        view
+        override
+        returns (bytes32)
+    {
+        Offer memory offer = _offers[_offerId];
+
+        // compute the overall signed struct hash
+        /* solium-disable-next-line indentation */
+        bytes32 structHash = keccak256(abi.encode(
+            EIP712_OFFER_STRUCT_SCHEMA_HASH,
+            offer
+        ));
+
+        // compute eip712 compliant hash
+        /* solium-disable-next-line indentation */
+        return keccak256(abi.encodePacked(
+            EIP191_HEADER,
+            EIP712_DOMAIN_HASH,
+            structHash
+        ));
     }
 
     // Lender call this function to accepted the offer immediatel
