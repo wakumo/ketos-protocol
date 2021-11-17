@@ -412,6 +412,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         nonReentrant
         onlyBorrowPeriodGreaterThanZero(_extendPeriod)
     {
+        require(_extendPeriod <= PawnShopLibrary.YEAR_IN_SECONDS, "over-max-extend-lending-time");
         Offer storage offer = _offers[_offerId];
 
         // Validations
