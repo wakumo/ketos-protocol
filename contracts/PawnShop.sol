@@ -51,9 +51,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     address payable public treasury;
 
-    address constant public ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
-    uint256 constant public MIN_LENDER_FEE_RATE = 60000; // 6 %
-    uint256 constant public MAX_LENDER_FEE_RATE = 720000; // 72 %
+    address constant private ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+    uint256 constant private MIN_LENDER_FEE_RATE = 60000; // 6 %
+    uint256 constant private MAX_LENDER_FEE_RATE = 720000; // 72 %
+    uint256 constant private MAX_SERVICE_FEE_RATE = 280000; // 28 %
 
     constructor(address payable _treasury) {
         treasury = _treasury;
@@ -107,7 +108,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     }
 
     function setServiceFeeRate(address _token, uint256 _feeRate) public override onlyOwner {
-        require(_feeRate < 280000, "invalid_service_fee"); // 28%
+        require(_feeRate < MAX_SERVICE_FEE_RATE, "invalid_service_fee"); // 28%
         _addSupportedToken(_token);
         _serviceFeeRates[_token] = _feeRate;
     }
