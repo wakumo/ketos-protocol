@@ -175,6 +175,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(params.lenderFeeRate >= MIN_LENDER_FEE_RATE, "lt_min_lender_fee_RATE");
         require(params.lenderFeeRate <= MAX_LENDER_FEE_RATE, "gt_max_lender_fee_RATE");
         require(supportedTokens[params.borrowToken] == true, "invalid_borrow_token");
+        require(params.borrowPeriod <= PawnShopLibrary.YEAR_IN_SECONDS, "over-max-extend-lending-time");
 
         // Init offer
         Offer memory offer;
@@ -405,6 +406,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     }
 
     // Borrower interest only and extend deadline
+    // The total loan period cannot exceed 1 year
     function extendLendingTime(bytes16 _offerId, uint256 _extendPeriod)
         external
         override
@@ -412,10 +414,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         nonReentrant
         onlyBorrowPeriodGreaterThanZero(_extendPeriod)
     {
-        require(_extendPeriod <= PawnShopLibrary.YEAR_IN_SECONDS, "over-max-extend-lending-time");
         Offer storage offer = _offers[_offerId];
 
         // Validations
+        require(offer.borrowPeriod.add(_extendPeriod) <= PawnShopLibrary.YEAR_IN_SECONDS, "over-max-extend-lending-time");
         require(offer.owner == msg.sender, "only-owner-can-extend-lending-time");
         require(offer.state == OfferState.LENDING, "can only extend in progress offer");
         require(offer.startLendingAt.add(offer.borrowPeriod) >= block.timestamp, "lending-time-closed");
