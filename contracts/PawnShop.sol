@@ -1,9 +1,8 @@
 //SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
+pragma solidity 0.8.9;
 pragma experimental ABIEncoderV2;
 
-// import "hardhat/console.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./extensions/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
@@ -16,6 +15,23 @@ import './libraries/PawnShopLibrary.sol';
 
 contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
+
+    // EIP712 Domain Name value
+    string constant private EIP712_DOMAIN_NAME = "PawnShop";
+
+    // EIP712 Domain Version value
+    string constant private EIP712_DOMAIN_VERSION = "1";
+
+    // Hash of the EIP712 Domain Separator Schema
+    /* solium-disable-next-line indentation */
+    bytes32 constant private EIP712_DOMAIN_SEPARATOR_SCHEMA_HASH = keccak256(abi.encodePacked(
+        "EIP712Domain(",
+        "string name,",
+        "string version,",
+        "uint256 chainId,",
+        "address verifyingContract",
+        ")"
+    ));
 
     struct FeeRate {
         uint256 lenderFeeRate;
@@ -34,7 +50,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         uint256 closeApplyAt;
         uint256 borrowPeriod;
         uint256 startLendingAt;
-        uint256 liquidationAt;
         uint256 lenderFeeRate;
         uint256 serviceFeeRate;
         uint256 nftType;
@@ -44,6 +59,35 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         OfferState state;
     }
 
+    // Hash of the EIP712 Domain Separator data
+    bytes32 public EIP712_DOMAIN_HASH;
+
+    // EIP191 header for EIP712 prefix
+    bytes2 constant private EIP191_HEADER = 0x1901;
+
+    // Hash of the EIP712 Offer struct
+    /* solium-disable-next-line indentation */
+    bytes32 constant private EIP712_OFFER_STRUCT_SCHEMA_HASH = keccak256(abi.encodePacked(
+        "Offer(",
+        "address owner,",
+        "address lender,",
+        "uint256 borrowAmount,",
+        "address borrowToken,",
+        "address to,",
+        "uint256 startApplyAt,",
+        "uint256 closeApplyAt",
+        "uint256 borrowPeriod,",
+        "uint256 startLendingAt,",
+        "uint256 lenderFeeRate,",
+        "uint256 serviceFeeRate,",
+        "uint256 nftType,",
+        "uint256 nftAmount,",
+        "address collection,",
+        "uint256 tokenId,",
+        "OfferState state,",
+        ")"
+    ));
+
     mapping(bytes16 => Offer) private _offers;
 
     mapping(address => uint256) private _serviceFeeRates;
@@ -52,13 +96,22 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     address payable public treasury;
 
-    uint256 constant public LIQUIDATION_PERIOD_IN_SECONDS = 2592000;
-    address constant public ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
-    uint256 constant public MIN_LENDER_FEE_RATE = 60000; // 6 %
-    uint256 constant public MAX_LENDER_FEE_RATE = 720000; // 72 %
+    address constant private ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+    uint256 constant private MIN_LENDER_FEE_RATE = 60000; // 6 %
+    uint256 constant private MAX_LENDER_FEE_RATE = 720000; // 72 %
+    uint256 constant private MAX_SERVICE_FEE_RATE = 280000; // 28 %
 
-    constructor(address payable _treasury) {
+    constructor(address payable _treasury, address _multisigWallet) {
         treasury = _treasury;
+        _transferOwnership(_multisigWallet);
+        /* solium-disable-next-line indentation */
+        EIP712_DOMAIN_HASH = keccak256(abi.encode(
+            EIP712_DOMAIN_SEPARATOR_SCHEMA_HASH,
+            keccak256(bytes(EIP712_DOMAIN_NAME)),
+            keccak256(bytes(EIP712_DOMAIN_VERSION)),
+            block.chainid,
+            address(this)
+        ));
     }
 
     function pause() external onlyOwner {
@@ -109,7 +162,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     }
 
     function setServiceFeeRate(address _token, uint256 _feeRate) public override onlyOwner {
-        require(_feeRate < 1000000, "invalid_service_fee"); // 100%
+        require(_feeRate < MAX_SERVICE_FEE_RATE, "invalid_service_fee"); // 28%
         _addSupportedToken(_token);
         _serviceFeeRates[_token] = _feeRate;
     }
@@ -176,6 +229,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(params.lenderFeeRate >= MIN_LENDER_FEE_RATE, "lt_min_lender_fee_RATE");
         require(params.lenderFeeRate <= MAX_LENDER_FEE_RATE, "gt_max_lender_fee_RATE");
         require(supportedTokens[params.borrowToken] == true, "invalid_borrow_token");
+        require(params.borrowPeriod <= PawnShopLibrary.YEAR_IN_SECONDS, "over-max-extend-lending-time");
 
         // Init offer
         Offer memory offer;
@@ -202,47 +256,48 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         offer.state = OfferState.OPEN;
 
         _offers[params.offerId] = offer;
+
+        bytes32 offerHash = getOfferHashOfferInfo(offer);
         // Emit event
         emit OfferCreated(
             params.offerId,
             offer.collection,
             offer.tokenId,
             msg.sender,
-            offer.to,
-            offer.borrowAmount,
-            offer.borrowToken,
-            offer.startApplyAt,
-            offer.closeApplyAt,
-            offer.borrowPeriod,
-            offer.nftType,
-            offer.nftAmount,
-            offer.lenderFeeRate,
-            offer.serviceFeeRate
+            offerHash
         );
     }
 
-    function getOfferHash(
-        bytes16 _offerId,
-        address _collection,
-        uint256 _tokenId,
-        uint256 _borrowAmount,
-        uint256 _lenderFeeRate,
-        uint256 _serviceFeeRate,
-        address _borrowToken,
-        uint256 _borrowPeriod,
-        uint256 _nftAmount
-    ) public view override returns (bytes32) {
-        return PawnShopLibrary.offerHash(
-            _offerId,
-            _collection,
-            _tokenId,
-            _borrowAmount,
-            _lenderFeeRate,
-            _serviceFeeRate,
-            _borrowToken,
-            _borrowPeriod,
-            _nftAmount
-        );
+
+    /**
+     * Returns the EIP712 hash of an offer.
+     */
+    function getOfferHash(bytes16 _offerId)
+        public
+        override
+        view
+        returns (bytes32)
+    {
+        Offer memory offer = _offers[_offerId];
+
+        return getOfferHashOfferInfo(offer);
+    }
+
+    function getOfferHashOfferInfo(Offer memory _offer) public view returns (bytes32) {
+        // compute the overall signed struct hash
+        /* solium-disable-next-line indentation */
+        bytes32 structHash = keccak256(abi.encode(
+            EIP712_OFFER_STRUCT_SCHEMA_HASH,
+            _offer
+        ));
+
+        // compute eip712 compliant hash
+        /* solium-disable-next-line indentation */
+        return keccak256(abi.encodePacked(
+            EIP191_HEADER,
+            EIP712_DOMAIN_HASH,
+            structHash
+        ));
     }
 
     // Lender call this function to accepted the offer immediatel
@@ -260,17 +315,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
         // Check data integrity of the offer
         // Make sure the borrower does not change any information at applying time
-        bytes32 offerHash = PawnShopLibrary.offerHash(
-            _offerId,
-            offer.collection,
-            offer.tokenId,
-            offer.borrowAmount,
-            offer.lenderFeeRate,
-            offer.serviceFeeRate,
-            offer.borrowToken,
-            offer.borrowPeriod,
-            offer.nftAmount
-        );
+        bytes32 offerHash = getOfferHashOfferInfo(offer);
         require(offerHash == _offerHash, "offer informations has changed");
 
         // Update offer informations
@@ -286,7 +331,6 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         _safeTransfer(offer.borrowToken, msg.sender, offer.to, borrowAmountAfterFee);
 
         // Update end times
-        offer.liquidationAt = offer.startLendingAt.add(offer.borrowPeriod).add(LIQUIDATION_PERIOD_IN_SECONDS);
         offer.state = OfferState.LENDING;
         emit OfferApplied(_offerId, offer.collection, offer.tokenId, msg.sender);
     }
@@ -312,10 +356,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Send NFT back to borrower
         _nftSafeTransfer(address(this), msg.sender, offer.collection, offer.tokenId, offer.nftAmount, offer.nftType);
 
-        // clone amount value to emit
-        uint256 borrowAmount = offer.borrowAmount;
         offer.state = OfferState.REPAID;
-        emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, borrowAmount);
+        emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, offer.borrowAmount);
     }
 
     function updateOffer(bytes16 _offerId, uint256 _borrowAmount, uint256 _borrowPeriod, uint256 _lenderFeeRate)
@@ -342,7 +384,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Validations
         require(lenderFee > 0, "required minimum lender fee");
         require(serviceFee >= 0, "invalid_service_fee");
-        emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod);
+        bytes32 offerHash = getOfferHashOfferInfo(offer);
+        emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod, offerHash);
     }
 
     function cancelOffer(bytes16 _offerId)
@@ -358,6 +401,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             "only owner can cancel offer"
         );
         require(offer.lender == address(0), "only update unapply offer");
+        require(offer.state == OfferState.OPEN, "can only cancel open offer");
         offer.state = OfferState.CANCELED;
 
         // Send NFT back to borrower
@@ -406,6 +450,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     }
 
     // Borrower interest only and extend deadline
+    // The total loan period cannot exceed 1 year
     function extendLendingTime(bytes16 _offerId, uint256 _extendPeriod)
         external
         override
@@ -416,6 +461,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         Offer storage offer = _offers[_offerId];
 
         // Validations
+        require(offer.borrowPeriod.add(_extendPeriod) <= PawnShopLibrary.YEAR_IN_SECONDS, "over-max-extend-lending-time");
         require(offer.owner == msg.sender, "only-owner-can-extend-lending-time");
         require(offer.state == OfferState.LENDING, "can only extend in progress offer");
         require(offer.startLendingAt.add(offer.borrowPeriod) >= block.timestamp, "lending-time-closed");
@@ -431,14 +477,12 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
         // Update end times
         offer.borrowPeriod = offer.borrowPeriod.add(_extendPeriod);
-        offer.liquidationAt = offer.liquidationAt.add(_extendPeriod);
 
         emit ExtendLendingTimeRequested(
             _offerId,
             offer.collection,
             offer.tokenId,
             offer.startLendingAt.add(offer.borrowPeriod),
-            offer.liquidationAt,
             lenderFee,
             serviceFee
         );
@@ -458,18 +502,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         Offer storage offer = _offers[_offerId];
 
         // Validations
+        require(offer.state == OfferState.LENDING, "offer not lending");
         require(block.timestamp > offer.startLendingAt.add(offer.borrowPeriod), "can not claim in lending period");
-        if (block.timestamp <= offer.liquidationAt)
-            require(
-                offer.lender == msg.sender,
-            "only lender can claim NFT at this time"
-            );
-        require(
-            (msg.sender == treasury) ||
-            (msg.sender == offer.lender) ||
-            (msg.sender == offer.owner),
-            "invalid-address"
-        );
+        require(offer.lender == msg.sender, "only lender can claim NFT at this time");
+
         // Send NFT to taker
         _nftSafeTransfer(address(this), msg.sender, offer.collection, offer.tokenId, offer.nftAmount, offer.nftType);
         offer.state = OfferState.CLAIMED;

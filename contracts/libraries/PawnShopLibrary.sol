@@ -1,11 +1,11 @@
-pragma solidity ^0.8.9;
+pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 library PawnShopLibrary {
     using SafeMath for uint256;
 
-    uint256 private constant YEAR_IN_SECONDS = 31556926;
+    uint256 public constant YEAR_IN_SECONDS = 31536000;
 
     // 1000000 is 100% * 10_000 PERCENT FACTOR
     function getFeeAmount(uint256 borrowAmount, uint256 feeRate, uint256 lendingPeriod) internal pure returns (uint256) {

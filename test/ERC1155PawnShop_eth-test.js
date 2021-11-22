@@ -14,7 +14,7 @@ describe('ERC1155 PawnShop ETH', function () {
   let borrowPeriod = 60 * 60 * 24 * 7
   let lenderFeeRate = 100000
   let serviceFeeRate = 20000
-  const YEAR_IN_SECONDS = 31556926
+  const YEAR_IN_SECONDS = 31536000
   let nftAmount = 2
   before(async function () {
     ;[treasury, borrower, lender, ...addrs] = await ethers.getSigners()
@@ -25,7 +25,7 @@ describe('ERC1155 PawnShop ETH', function () {
 
   beforeEach(async function () {
     const PawnShop = await ethers.getContractFactory('PawnShop')
-    pawnShop = await PawnShop.deploy(treasury.address)
+    pawnShop = await PawnShop.deploy(treasury.address, treasury.address)
     await pawnShop.deployed()
     // set fee
     await pawnShop.setServiceFeeRate(utils.eth, serviceFeeRate) // 10% & 2%
@@ -89,7 +89,7 @@ describe('ERC1155 PawnShop ETH', function () {
     it('should failed to apply offer with not enough ETH', async function () {
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data), {
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
           value: wrongAmount,
         })
         .catch((err) => {
@@ -101,7 +101,7 @@ describe('ERC1155 PawnShop ETH', function () {
       await expect(
         pawnShop
           .connect(lender)
-          .applyOffer(data.offerId, utils.offerHash(data), {
+          .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
             value: data.borrowAmount,
           }),
       )
@@ -138,7 +138,7 @@ describe('ERC1155 PawnShop ETH', function () {
         ])
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data), {
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
           value: data.borrowAmount,
         })
     })
@@ -201,7 +201,7 @@ describe('ERC1155 PawnShop ETH', function () {
       let quoteApply = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data), {
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
           value: quoteApply.approvedAmount,
         })
     })
@@ -224,7 +224,6 @@ describe('ERC1155 PawnShop ETH', function () {
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
-      const newLiquidationPeriod = offer.liquidationAt.add(extendLendingPeriod)
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
         .mul(offer.lenderFeeRate)
@@ -251,7 +250,6 @@ describe('ERC1155 PawnShop ETH', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(offer.borrowPeriod).add(extendLendingPeriod),
-          newLiquidationPeriod,
           lenderFee,
           serviceFee,
         )
@@ -259,10 +257,10 @@ describe('ERC1155 PawnShop ETH', function () {
       expect(await treasury.getBalance()).to.eq(balanceTreasury.add(serviceFee))
       expect(await lender.getBalance()).to.eq(balanceLender.add(lenderFee))
       expect(await treasury.getBalance()).to.eq(
-        balanceTreasury.add(utils.convertBig('38330729678803')),
+        balanceTreasury.add(utils.convertBig('38356164383561')),
       )
       expect(await lender.getBalance()).to.eq(
-        balanceLender.add(utils.convertBig('191653648394016')),
+        balanceLender.add(utils.convertBig('191780821917808')),
       )
     })
 
@@ -274,7 +272,6 @@ describe('ERC1155 PawnShop ETH', function () {
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
-      const newLiquidationPeriod = offer.liquidationAt.add(extendLendingPeriod)
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
         .mul(offer.lenderFeeRate)
@@ -300,7 +297,6 @@ describe('ERC1155 PawnShop ETH', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(offer.borrowPeriod).add(extendLendingPeriod),
-          newLiquidationPeriod,
           lenderFee,
           serviceFee,
         )

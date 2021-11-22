@@ -1,4 +1,4 @@
-pragma solidity ^0.8.9;
+pragma solidity 0.8.9;
 
 interface IPawnShopUserActions {
 
@@ -20,7 +20,7 @@ interface IPawnShopUserActions {
 
     function createOffer1155(OfferCreateParam memory params) external;
 
-    function getOfferHash(bytes16 _offerId, address _collection, uint256 _tokenId, uint256 _borrowAmount, uint256 _lenderFeeRate, uint256 _serviceFeeRate, address _borrowToken, uint256 _borrowPeriod, uint256 _nftAmount) external view returns(bytes32);
+    function getOfferHash(bytes16 _offerId) external view returns(bytes32);
 
     function applyOffer(bytes16 _offerId, bytes32 _hash) external payable;
 

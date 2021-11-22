@@ -14,8 +14,9 @@ describe('ERC1155 PawnShop', function () {
   let lenderFeeRate = 100000
   let serviceFeeRate = 20000
   let LIQUIDATION_PERIOD_IN_SECONDS
+  const YEAR_IN_SECONDS = 31536000
   before(async function () {
-    ;[treasury, borrower, lender, ...addrs] = await ethers.getSigners()
+    ;[treasury, borrower, lender, strange, ...addrs] = await ethers.getSigners()
     const TestERC1155 = await ethers.getContractFactory('TestERC1155')
     testERC1155 = await TestERC1155.deploy()
     await testERC1155.deployed()
@@ -28,9 +29,8 @@ describe('ERC1155 PawnShop', function () {
     await testERC20.mint(lender.address, utils.convertBig(100 * 10 ** 18))
     await testERC20.mint(borrower.address, utils.convertBig(100 * 10 ** 18))
     const PawnShop = await ethers.getContractFactory('PawnShop')
-    pawnShop = await PawnShop.deploy(treasury.address)
+    pawnShop = await PawnShop.deploy(treasury.address, treasury.address)
     await pawnShop.deployed()
-    LIQUIDATION_PERIOD_IN_SECONDS = await pawnShop.LIQUIDATION_PERIOD_IN_SECONDS()
     // set fee
     await pawnShop.setServiceFeeRate(testERC20.address, 20000) // 10% & 2%
     // let currentTime = utils.convertInt(await network.provider.send("evm_mine"));
@@ -88,24 +88,14 @@ describe('ERC1155 PawnShop', function () {
             lenderFeeRate,
             data.nftAmount,
           ]),
-      )
-        .to.emit(pawnShop.connect(borrower), 'OfferCreated')
-        .withArgs(
-          data.offerId,
-          data.collection,
-          utils.convertBig(data.tokenId),
-          borrower.address,
-          data.to,
-          utils.convertBig(data.borrowAmount),
-          data.borrowToken,
-          utils.convertBig(data.startApplyAt),
-          utils.convertBig(data.closeApplyAt),
-          utils.convertBig(borrowPeriod),
-          1155, // nft Type
-          data.nftAmount,
-          data.lenderFeeRate,
-          data.serviceFeeRate
-        )
+      ).to.emit(pawnShop.connect(borrower), 'OfferCreated')
+      offer = await pawnShop.getOffer(data.offerId)
+      expect(offer.lenderFeeRate).to.eq(data.lenderFeeRate)
+      expect(offer.nftType).to.eq(1155)
+      expect(offer.state).to.eq(0)
+      expect(offer.owner).to.eq(borrower.address)
+      expect(offer.collection).to.eq(data.collection)
+      expect(offer.tokenId).to.eq(data.tokenId)
     })
 
     it('should raise error when creating offer with non-approve nft', async function () {
@@ -297,13 +287,14 @@ describe('ERC1155 PawnShop', function () {
     })
 
     it('should failed to apply offer which has updated borrowAmount', async function () {
+      oldOfferHash = await pawnShop.getOfferHash(data.offerId)
       // update change borrowAmount
       await pawnShop
         .connect(borrower)
         .updateOffer(data.offerId, data.borrowAmount * 2, 0, data.lenderFeeRate)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, oldOfferHash)
         .catch((err) => {
           expect(err.message).to.include('offer informations has changed')
         })
@@ -311,10 +302,13 @@ describe('ERC1155 PawnShop', function () {
     it('should failed to apply non-open offer', async function () {
       // apply offer to make it become in progress offer
       await testERC20.approve(pawnShop.address, data.borrowAmount)
-      await pawnShop.applyOffer(data.offerId, utils.offerHash(data))
+      await pawnShop.applyOffer(
+        data.offerId,
+        await pawnShop.getOfferHash(data.offerId),
+      )
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
         .catch((err) => {
           expect(err.message).to.include('apply-non-open-offer')
         })
@@ -325,7 +319,7 @@ describe('ERC1155 PawnShop', function () {
       ])
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
         .catch((err) => {
           expect(err.message).to.include('expired-order')
         })
@@ -336,7 +330,7 @@ describe('ERC1155 PawnShop', function () {
         .approve(pawnShop.address, data.borrowAmount.sub(100))
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
         .catch((err) => {
           expect(err.message).to.include('ERC20')
         })
@@ -347,7 +341,7 @@ describe('ERC1155 PawnShop', function () {
       await expect(
         pawnShop
           .connect(lender)
-          .applyOffer(data.offerId, utils.offerHash(data)),
+          .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId)),
       )
         .to.emit(pawnShop, 'OfferApplied')
         .withArgs(
@@ -397,7 +391,7 @@ describe('ERC1155 PawnShop', function () {
         .approve(pawnShop.address, data.borrowAmount)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
       await pawnShop
         .connect(borrower)
         .repay(data.offerId)
@@ -412,7 +406,7 @@ describe('ERC1155 PawnShop', function () {
         .approve(pawnShop.address, data.borrowAmount)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
       // set timeblock stamp over time
       await network.provider.send('evm_setNextBlockTimestamp', [
         data.closeApplyAt + 60 * 60 * 24 * 7 + 100, // after 7 day
@@ -433,7 +427,7 @@ describe('ERC1155 PawnShop', function () {
         .approve(pawnShop.address, data.borrowAmount)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
       // balance of borrower & lender
       const balanceBorrower = await testERC20.balanceOf(borrower.address)
       const balanceLender = await testERC20.balanceOf(lender.address)
@@ -491,7 +485,7 @@ describe('ERC1155 PawnShop', function () {
         .approve(pawnShop.address, data.borrowAmount)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
       await pawnShop
         .connect(borrower)
         .updateOffer(data.offerId, data.borrowAmount, 0, testERC20.address)
@@ -510,6 +504,10 @@ describe('ERC1155 PawnShop', function () {
     })
 
     it('should update borrowAmount successfully and no change borrowPeriod', async function () {
+      let offer = await pawnShop.getOffer(data.offerId)
+      temp = [...offer]
+      temp[2] = offer.borrowAmount.mul(2) // borrowAmount
+      newOfferHash = await pawnShop.getOfferHashOfferInfo(temp)
       await expect(
         pawnShop
           .connect(borrower)
@@ -527,15 +525,20 @@ describe('ERC1155 PawnShop', function () {
           data.tokenId,
           data.borrowAmount * 2,
           data.borrowPeriod,
+          newOfferHash,
         )
 
       // check borrowAmount
-      const offer = await pawnShop.getOffer(data.offerId)
+      offer = await pawnShop.getOffer(data.offerId)
       expect(offer.borrowAmount).to.eq(utils.convertBig(data.borrowAmount * 2))
       expect(offer.borrowPeriod).to.eq(data.borrowPeriod)
     })
 
     it('should update borrowPeriod successfully and no change borrowAmount', async function () {
+      let offer = await pawnShop.getOffer(data.offerId)
+      temp = [...offer]
+      temp[7] = offer.borrowPeriod.mul(2) // borrowPeriod
+      newOfferHash = await pawnShop.getOfferHashOfferInfo(temp)
       await expect(
         pawnShop
           .connect(borrower)
@@ -553,10 +556,11 @@ describe('ERC1155 PawnShop', function () {
           data.tokenId,
           data.borrowAmount,
           data.borrowPeriod * 2,
+          newOfferHash,
         )
 
       // check borrowAmount
-      const offer = await pawnShop.getOffer(data.offerId)
+      offer = await pawnShop.getOffer(data.offerId)
       expect(offer.borrowAmount).to.eq(utils.convertBig(data.borrowAmount))
       expect(offer.borrowPeriod).to.eq(data.borrowPeriod * 2)
     })
@@ -600,7 +604,7 @@ describe('ERC1155 PawnShop', function () {
         .approve(pawnShop.address, data.borrowAmount)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
       await pawnShop
         .connect(borrower)
         .cancelOffer(data.offerId)
@@ -650,7 +654,7 @@ describe('ERC1155 PawnShop', function () {
         .approve(pawnShop.address, data.borrowAmount)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
     })
 
     it('should failed to extend with invalid borrow period', async function () {
@@ -699,7 +703,6 @@ describe('ERC1155 PawnShop', function () {
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
-      const YEAR_IN_SECONDS = 31556926
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
         .mul(offer.lenderFeeRate)
@@ -723,10 +726,6 @@ describe('ERC1155 PawnShop', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(offer.borrowPeriod).add(extendLendingPeriod),
-          offer.startLendingAt
-            .add(offer.borrowPeriod)
-            .add(extendLendingPeriod)
-            .add(LIQUIDATION_PERIOD_IN_SECONDS),
           lenderFee,
           serviceFee,
         )
@@ -738,10 +737,10 @@ describe('ERC1155 PawnShop', function () {
         balanceLender.add(lenderFee),
       )
       expect(await testERC20.balanceOf(treasury.address)).to.eq(
-        balanceTreasury.add(38330),
+        balanceTreasury.add(38356),
       )
       expect(await testERC20.balanceOf(lender.address)).to.eq(
-        balanceLender.add(191653),
+        balanceLender.add(191780),
       )
     })
 
@@ -757,7 +756,6 @@ describe('ERC1155 PawnShop', function () {
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
-      const YEAR_IN_SECONDS = 31556926
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
         .mul(offer.lenderFeeRate)
@@ -781,10 +779,6 @@ describe('ERC1155 PawnShop', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(offer.borrowPeriod).add(extendLendingPeriod),
-          offer.startLendingAt
-            .add(offer.borrowPeriod)
-            .add(extendLendingPeriod)
-            .add(LIQUIDATION_PERIOD_IN_SECONDS),
           lenderFee,
           serviceFee,
         )
@@ -830,7 +824,7 @@ describe('ERC1155 PawnShop', function () {
         .approve(pawnShop.address, data.borrowAmount)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
     })
     it('can not claim an in-progress offer', async function () {
       await pawnShop
@@ -863,42 +857,6 @@ describe('ERC1155 PawnShop', function () {
       await expect(pawnShop.connect(lender).claim(data.offerId))
         .to.emit(pawnShop, 'NFTClaim')
         .withArgs(data.offerId, data.collection, data.tokenId, lender.address)
-    })
-    it('no one except admin, lender, borrower can claim after preiod liquidition time', async function () {
-      const offer = await pawnShop.getOffer(data.offerId)
-      await network.provider.send('evm_setNextBlockTimestamp', [
-        utils.convertInt(
-          offer.startLendingAt
-            .add(offer.borrowPeriod)
-            .add(LIQUIDATION_PERIOD_IN_SECONDS)
-            .add(100),
-        ), // after 7 day
-      ])
-      await pawnShop
-        .connect(addrs[0])
-        .claim(data.offerId)
-        .catch((e) => {
-          expect(e.message).to.include('invalid-address')
-        })
-    })
-    it('borrower can claim successfully after preiod liquidtion time', async function () {
-      const offer = await pawnShop.getOffer(data.offerId)
-      await network.provider.send('evm_setNextBlockTimestamp', [
-        utils.convertInt(
-          offer.startLendingAt
-            .add(offer.borrowPeriod)
-            .add(LIQUIDATION_PERIOD_IN_SECONDS)
-            .add(100),
-        ), // after 7 day
-      ])
-      await expect(pawnShop.connect(borrower).claim(data.offerId))
-        .to.emit(pawnShop, 'NFTClaim')
-        .withArgs(data.offerId, data.collection, data.tokenId, borrower.address)
-
-      //check owner NFT
-      expect(await testERC1155.balanceOf(borrower.address, data.tokenId)).to.gt(
-        0,
-      )
     })
   })
 
@@ -960,8 +918,8 @@ describe('ERC1155 PawnShop', function () {
       ;[lenderFee, serviceFee] = await pawnShop
         .connect(borrower)
         .quoteFees(borrowAmount, lenderFeeRate, serviceFeeRate, lendingPeriod)
-      expect(lenderFee.toString()).to.eq('191653')
-      expect(serviceFee.toString()).to.eq('38330')
+      expect(lenderFee.toString()).to.eq('191780')
+      expect(serviceFee.toString()).to.eq('38356')
     })
 
     it('quoteApplyAmounts', async function () {
@@ -993,11 +951,11 @@ describe('ERC1155 PawnShop', function () {
       // Apply Offer
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
 
-      expect(lenderFee.toString()).to.eq('191653')
-      expect(serviceFee.toString()).to.eq('38330')
-      expect(approvedAmount.toString()).to.eq('99808347')
+      expect(lenderFee.toString()).to.eq('191780')
+      expect(serviceFee.toString()).to.eq('38356')
+      expect(approvedAmount.toString()).to.eq('99808220')
     })
 
     it('quoteExtendFees', async function () {
@@ -1027,7 +985,7 @@ describe('ERC1155 PawnShop', function () {
       // Apply Offer
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data))
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId))
 
       // Get estimate extend fees
       ;[lenderFee, serviceFee] = await pawnShop
@@ -1044,8 +1002,8 @@ describe('ERC1155 PawnShop', function () {
       await pawnShop
         .connect(borrower)
         .extendLendingTime(data.offerId, extendPeriod)
-      expect(lenderFee.toString()).to.eq('383307')
-      expect(serviceFee.toString()).to.eq('76661')
+      expect(lenderFee.toString()).to.eq('383561')
+      expect(serviceFee.toString()).to.eq('76712')
       expect(await testERC20.balanceOf(treasury.address)).to.eq(
         treasuryBalance.add(serviceFee),
       )
