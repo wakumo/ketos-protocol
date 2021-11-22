@@ -14,7 +14,7 @@ describe('ERC1155 PawnShop ETH', function () {
   let borrowPeriod = 60 * 60 * 24 * 7
   let lenderFeeRate = 100000
   let serviceFeeRate = 20000
-  const YEAR_IN_SECONDS = 31556926
+  const YEAR_IN_SECONDS = 31536000
   let nftAmount = 2
   before(async function () {
     ;[treasury, borrower, lender, ...addrs] = await ethers.getSigners()
@@ -25,7 +25,7 @@ describe('ERC1155 PawnShop ETH', function () {
 
   beforeEach(async function () {
     const PawnShop = await ethers.getContractFactory('PawnShop')
-    pawnShop = await PawnShop.deploy(treasury.address)
+    pawnShop = await PawnShop.deploy(treasury.address, treasury.address)
     await pawnShop.deployed()
     // set fee
     await pawnShop.setServiceFeeRate(utils.eth, serviceFeeRate) // 10% & 2%
@@ -257,10 +257,10 @@ describe('ERC1155 PawnShop ETH', function () {
       expect(await treasury.getBalance()).to.eq(balanceTreasury.add(serviceFee))
       expect(await lender.getBalance()).to.eq(balanceLender.add(lenderFee))
       expect(await treasury.getBalance()).to.eq(
-        balanceTreasury.add(utils.convertBig('38330729678803')),
+        balanceTreasury.add(utils.convertBig('38356164383561')),
       )
       expect(await lender.getBalance()).to.eq(
-        balanceLender.add(utils.convertBig('191653648394016')),
+        balanceLender.add(utils.convertBig('191780821917808')),
       )
     })
 

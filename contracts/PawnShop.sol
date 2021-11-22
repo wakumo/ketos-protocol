@@ -2,7 +2,7 @@
 pragma solidity 0.8.9;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./libraries/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
@@ -101,9 +101,9 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     uint256 constant private MAX_LENDER_FEE_RATE = 720000; // 72 %
     uint256 constant private MAX_SERVICE_FEE_RATE = 280000; // 28 %
 
-    constructor(address payable _treasury) {
+    constructor(address payable _treasury, address _multisigWallet) {
         treasury = _treasury;
-
+        _transferOwnership(_multisigWallet);
         /* solium-disable-next-line indentation */
         EIP712_DOMAIN_HASH = keccak256(abi.encode(
             EIP712_DOMAIN_SEPARATOR_SCHEMA_HASH,
