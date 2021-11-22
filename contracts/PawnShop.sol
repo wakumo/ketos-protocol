@@ -261,17 +261,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             params.offerId,
             offer.collection,
             offer.tokenId,
-            msg.sender,
-            offer.to,
-            offer.borrowAmount,
-            offer.borrowToken,
-            offer.startApplyAt,
-            offer.closeApplyAt,
-            offer.borrowPeriod,
-            offer.nftType,
-            offer.nftAmount,
-            offer.lenderFeeRate,
-            offer.serviceFeeRate
+            msg.sender
         );
     }
 
@@ -281,17 +271,21 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
      */
     function getOfferHash(bytes16 _offerId)
         public
-        view
         override
+        view
         returns (bytes32)
     {
         Offer memory offer = _offers[_offerId];
 
+        return getOfferHashOfferInfo(offer);
+    }
+
+    function getOfferHashOfferInfo(Offer memory _offer) public view returns (bytes32) {
         // compute the overall signed struct hash
         /* solium-disable-next-line indentation */
         bytes32 structHash = keccak256(abi.encode(
             EIP712_OFFER_STRUCT_SCHEMA_HASH,
-            offer
+            _offer
         ));
 
         // compute eip712 compliant hash
@@ -318,17 +312,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         if (offer.closeApplyAt != 0) require(offer.closeApplyAt >= block.timestamp, "expired-order");
         // Check data integrity of the offer
         // Make sure the borrower does not change any information at applying time
-        bytes32 offerHash = PawnShopLibrary.offerHash(
-            _offerId,
-            offer.collection,
-            offer.tokenId,
-            offer.borrowAmount,
-            offer.lenderFeeRate,
-            offer.serviceFeeRate,
-            offer.borrowToken,
-            offer.borrowPeriod,
-            offer.nftAmount
-        );
+        bytes32 offerHash = getOfferHashOfferInfo(offer);
         require(offerHash == _offerHash, "offer informations has changed");
 
         // Update offer informations
