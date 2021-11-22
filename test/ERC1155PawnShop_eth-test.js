@@ -89,7 +89,7 @@ describe('ERC1155 PawnShop ETH', function () {
     it('should failed to apply offer with not enough ETH', async function () {
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data), {
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
           value: wrongAmount,
         })
         .catch((err) => {
@@ -101,7 +101,7 @@ describe('ERC1155 PawnShop ETH', function () {
       await expect(
         pawnShop
           .connect(lender)
-          .applyOffer(data.offerId, utils.offerHash(data), {
+          .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
             value: data.borrowAmount,
           }),
       )
@@ -138,7 +138,7 @@ describe('ERC1155 PawnShop ETH', function () {
         ])
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data), {
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
           value: data.borrowAmount,
         })
     })
@@ -201,7 +201,7 @@ describe('ERC1155 PawnShop ETH', function () {
       let quoteApply = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
         .connect(lender)
-        .applyOffer(data.offerId, utils.offerHash(data), {
+        .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
           value: quoteApply.approvedAmount,
         })
     })
