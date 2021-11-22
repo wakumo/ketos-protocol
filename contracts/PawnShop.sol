@@ -2,7 +2,7 @@
 pragma solidity 0.8.9;
 pragma experimental ABIEncoderV2;
 
-import "./libraries/Ownable.sol";
+import "./extensions/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
