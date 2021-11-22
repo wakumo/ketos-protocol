@@ -256,13 +256,15 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         offer.state = OfferState.OPEN;
 
         _offers[params.offerId] = offer;
+
+        bytes32 offerHash = getOfferHashOfferInfo(offer);
         // Emit event
         emit OfferCreated(
             params.offerId,
             offer.collection,
             offer.tokenId,
             msg.sender,
-            getOfferHashOfferInfo(offer)
+            offerHash
         );
     }
 
@@ -382,7 +384,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Validations
         require(lenderFee > 0, "required minimum lender fee");
         require(serviceFee >= 0, "invalid_service_fee");
-        emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod, getOfferHashOfferInfo(offer));
+        bytes32 offerHash = getOfferHashOfferInfo(offer);
+        emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod, offerHash);
     }
 
     function cancelOffer(bytes16 _offerId)
