@@ -30,7 +30,6 @@ describe('ERC721 PawnShop', function () {
     const PawnShop = await ethers.getContractFactory('PawnShop')
     pawnShop = await PawnShop.deploy(treasury.address)
     await pawnShop.deployed()
-    LIQUIDATION_PERIOD_IN_SECONDS = await pawnShop.LIQUIDATION_PERIOD_IN_SECONDS()
     // set fee
     await pawnShop.setServiceFeeRate(testERC20.address, serviceFeeRate) // 10% & 2%
     // let currentTime = utils.convertInt(await network.provider.send("evm_mine"));
@@ -424,7 +423,6 @@ describe('ERC721 PawnShop', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(data.borrowPeriod * 2),
-          offer.liquidationAt.add(data.borrowPeriod),
           fees.lenderFee,
           0,
         )
@@ -800,10 +798,6 @@ describe('ERC721 PawnShop', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(offer.borrowPeriod).add(extendLendingPeriod),
-          offer.startLendingAt
-            .add(offer.borrowPeriod)
-            .add(extendLendingPeriod)
-            .add(LIQUIDATION_PERIOD_IN_SECONDS),
           lenderFee,
           serviceFee,
         )
@@ -858,10 +852,6 @@ describe('ERC721 PawnShop', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(offer.borrowPeriod).add(extendLendingPeriod),
-          offer.startLendingAt
-            .add(offer.borrowPeriod)
-            .add(extendLendingPeriod)
-            .add(LIQUIDATION_PERIOD_IN_SECONDS),
           lenderFee,
           serviceFee,
         )
@@ -940,40 +930,6 @@ describe('ERC721 PawnShop', function () {
       await expect(pawnShop.connect(lender).claim(data.offerId))
         .to.emit(pawnShop, 'NFTClaim')
         .withArgs(data.offerId, data.collection, data.tokenId, lender.address)
-    })
-    it('no one except admin, lender, borrower can claim after preiod liquidition time', async function () {
-      const offer = await pawnShop.getOffer(data.offerId)
-      await network.provider.send('evm_setNextBlockTimestamp', [
-        utils.convertInt(
-          offer.startLendingAt
-            .add(offer.borrowPeriod)
-            .add(LIQUIDATION_PERIOD_IN_SECONDS)
-            .add(100),
-        ), // after 7 day
-      ])
-      await pawnShop
-        .connect(addrs[0])
-        .claim(data.offerId)
-        .catch((e) => {
-          expect(e.message).to.include('invalid-address')
-        })
-    })
-    it('borrower can claim successfully after preiod liquidtion time', async function () {
-      const offer = await pawnShop.getOffer(data.offerId)
-      await network.provider.send('evm_setNextBlockTimestamp', [
-        utils.convertInt(
-          offer.startLendingAt
-            .add(offer.borrowPeriod)
-            .add(LIQUIDATION_PERIOD_IN_SECONDS)
-            .add(100),
-        ), // after 7 day
-      ])
-      await expect(pawnShop.connect(borrower).claim(data.offerId))
-        .to.emit(pawnShop, 'NFTClaim')
-        .withArgs(data.offerId, data.collection, data.tokenId, borrower.address)
-
-      //check owner NFT
-      expect(await testERC721.ownerOf(data.tokenId)).to.eq(borrower.address)
     })
   })
 

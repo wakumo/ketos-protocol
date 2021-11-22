@@ -219,7 +219,6 @@ describe('ERC721 PawnShop ETH', function () {
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
-      const newLiquidationPeriod = offer.liquidationAt.add(extendLendingPeriod)
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
         .mul(offer.lenderFeeRate)
@@ -246,7 +245,6 @@ describe('ERC721 PawnShop ETH', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(offer.borrowPeriod).add(extendLendingPeriod),
-          newLiquidationPeriod,
           lenderFee,
           serviceFee,
         )
@@ -269,7 +267,6 @@ describe('ERC721 PawnShop ETH', function () {
       // get lending cycle time to calculate args emitted
       const offer = await pawnShop.getOffer(data.offerId)
       const extendLendingPeriod = utils.convertBig(data.borrowPeriod)
-      const newLiquidationPeriod = offer.liquidationAt.add(extendLendingPeriod)
       const lenderFee = extendLendingPeriod
         .mul(offer.borrowAmount)
         .mul(offer.lenderFeeRate)
@@ -295,7 +292,6 @@ describe('ERC721 PawnShop ETH', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(offer.borrowPeriod).add(extendLendingPeriod),
-          newLiquidationPeriod,
           lenderFee,
           serviceFee,
         )
@@ -377,7 +373,6 @@ describe('ERC721 PawnShop ETH', function () {
           data.collection,
           data.tokenId,
           offer.startLendingAt.add(data.borrowPeriod * 2),
-          offer.liquidationAt.add(data.borrowPeriod),
           fees.lenderFee,
           0,
         )
