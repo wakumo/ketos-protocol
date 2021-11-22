@@ -81,14 +81,14 @@ describe('ERC721 PawnShop', function () {
             lenderFeeRate,
             1,
           ]),
-      )
-        .to.emit(pawnShop.connect(borrower), 'OfferCreated')
-        .withArgs(
-          data.offerId,
-          data.collection,
-          utils.convertBig(data.tokenId),
-          borrower.address,
-        )
+      ).to.emit(pawnShop.connect(borrower), 'OfferCreated')
+      offer = await pawnShop.getOffer(data.offerId)
+      expect(offer.lenderFeeRate).to.eq(data.lenderFeeRate)
+      expect(offer.nftType).to.eq(721)
+      expect(offer.state).to.eq(0)
+      expect(offer.owner).to.eq(borrower.address)
+      expect(offer.collection).to.eq(data.collection)
+      expect(offer.tokenId).to.eq(data.tokenId)
     })
 
     it('should raise error when creating offer with non-approve nft', async function () {
@@ -581,6 +581,10 @@ describe('ERC721 PawnShop', function () {
     })
 
     it('should update borrowAmount successfully and no change borrowPeriod', async function () {
+      let offer = await pawnShop.getOffer(data.offerId)
+      temp = [...offer]
+      temp[2] = offer.borrowAmount.mul(2) // borrowAmount
+      newOfferHash = await pawnShop.getOfferHashOfferInfo(temp)
       await expect(
         pawnShop
           .connect(borrower)
@@ -598,15 +602,20 @@ describe('ERC721 PawnShop', function () {
           data.tokenId,
           data.borrowAmount * 2,
           data.borrowPeriod,
+          newOfferHash,
         )
 
       // check borrowAmount
-      const offer = await pawnShop.getOffer(data.offerId)
+      offer = await pawnShop.getOffer(data.offerId)
       expect(offer.borrowAmount).to.eq(utils.convertBig(data.borrowAmount * 2))
       expect(offer.borrowPeriod).to.eq(data.borrowPeriod)
     })
 
     it('should update borrowPeriod successfully and no change borrowAmount', async function () {
+      let offer = await pawnShop.getOffer(data.offerId)
+      temp = [...offer]
+      temp[7] = offer.borrowPeriod.mul(2) // borrowPeriod
+      newOfferHash = await pawnShop.getOfferHashOfferInfo(temp)
       await expect(
         pawnShop
           .connect(borrower)
@@ -624,10 +633,11 @@ describe('ERC721 PawnShop', function () {
           data.tokenId,
           data.borrowAmount,
           data.borrowPeriod * 2,
+          newOfferHash,
         )
 
       // check borrowAmount
-      const offer = await pawnShop.getOffer(data.offerId)
+      offer = await pawnShop.getOffer(data.offerId)
       expect(offer.borrowAmount).to.eq(utils.convertBig(data.borrowAmount))
       expect(offer.borrowPeriod).to.eq(data.borrowPeriod * 2)
     })

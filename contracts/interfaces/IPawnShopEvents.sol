@@ -6,7 +6,8 @@ interface IPawnShopEvents {
         bytes16 indexed offerId,
         address collection,
         uint256 tokenId,
-        address owner
+        address owner,
+        bytes32 offerHash
     );
 
     event OfferApplied(
@@ -29,7 +30,8 @@ interface IPawnShopEvents {
         address collection,
         uint256 tokenId,
         uint256 borrowAmount,
-        uint256 borrowPeriod
+        uint256 borrowPeriod,
+        bytes32 offerHash
     );
 
     event OfferCancelled(bytes16 indexed offerId, address collection, uint256 tokenId);

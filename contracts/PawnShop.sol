@@ -261,7 +261,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             params.offerId,
             offer.collection,
             offer.tokenId,
-            msg.sender
+            msg.sender,
+            getOfferHashOfferInfo(offer)
         );
     }
 
@@ -353,10 +354,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Send NFT back to borrower
         _nftSafeTransfer(address(this), msg.sender, offer.collection, offer.tokenId, offer.nftAmount, offer.nftType);
 
-        // clone amount value to emit
-        uint256 borrowAmount = offer.borrowAmount;
         offer.state = OfferState.REPAID;
-        emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, borrowAmount);
+        emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, offer.borrowAmount);
     }
 
     function updateOffer(bytes16 _offerId, uint256 _borrowAmount, uint256 _borrowPeriod, uint256 _lenderFeeRate)
@@ -383,7 +382,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Validations
         require(lenderFee > 0, "required minimum lender fee");
         require(serviceFee >= 0, "invalid_service_fee");
-        emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod);
+        emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod, getOfferHashOfferInfo(offer));
     }
 
     function cancelOffer(bytes16 _offerId)
