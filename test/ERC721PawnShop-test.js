@@ -97,7 +97,7 @@ describe('ERC721 PawnShop', function () {
           721, // nft Type
           1, // default nftAmount of 721 in event is 1
           data.lenderFeeRate,
-          data.serviceFeeRate
+          data.serviceFeeRate,
         )
     })
 
@@ -359,7 +359,7 @@ describe('ERC721 PawnShop', function () {
   describe('Service fee 0', async function () {
     beforeEach(async function () {
       await pawnShop.setServiceFeeRate(testERC20.address, 0)
-      data.serviceFeeRate = 0;
+      data.serviceFeeRate = 0
       await pawnShop
         .connect(borrower)
         .createOffer721([
@@ -866,6 +866,16 @@ describe('ERC721 PawnShop', function () {
       const newOfferSetting = await pawnShop.getOffer(data.offerId)
       expect(newOfferSetting.lenderFeeRate).to.eq(offer.lenderFeeRate)
       expect(newOfferSetting.serviceFeeRate).to.eq(offer.serviceFeeRate)
+    })
+
+    it('should invalid when extend over one year', async function () {
+      extendTime = 365.25 * 24 * 60 * 60 - data.borrowPeriod + 60 * 60 * 24 // total is: 364 days
+            await pawnShop
+        .connect(borrower)
+        .extendLendingTime(data.offerId, extendTime)
+        .catch((err) => {
+          expect(err.message).to.include('over-max-extend-lending-time')
+        })
     })
   })
 
