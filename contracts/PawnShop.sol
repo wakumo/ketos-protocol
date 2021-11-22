@@ -94,6 +94,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
 
     mapping(address => bool) public supportedTokens;
 
+    // Address will received service fee
     address payable public treasury;
 
     address constant private ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
@@ -102,8 +103,12 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
     uint256 constant private MAX_SERVICE_FEE_RATE = 280000; // 28 %
 
     constructor(address payable _treasury, address _multisigWallet) {
+
         treasury = _treasury;
+
+        // Transfer ownership to multi-signature wallet
         _transferOwnership(_multisigWallet);
+
         /* solium-disable-next-line indentation */
         EIP712_DOMAIN_HASH = keccak256(abi.encode(
             EIP712_DOMAIN_SEPARATOR_SCHEMA_HASH,
@@ -258,19 +263,15 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         _offers[params.offerId] = offer;
 
         bytes32 offerHash = getOfferHashOfferInfo(offer);
-        // Emit event
-        emit OfferCreated(
-            params.offerId,
-            offer.collection,
-            offer.tokenId,
-            msg.sender,
-            offerHash
-        );
+
+        emit OfferCreated(params.offerId, offer.collection, offer.tokenId, msg.sender, offerHash);
     }
 
 
     /**
      * Returns the EIP712 hash of an offer.
+     *
+     * To check data integrity
      */
     function getOfferHash(bytes16 _offerId)
         public
@@ -300,7 +301,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         ));
     }
 
-    // Lender call this function to accepted the offer immediatel
+    // Lender call this function to accepted offer
     function applyOffer(bytes16 _offerId, bytes32 _offerHash)
         external
         whenNotPaused
@@ -360,6 +361,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         emit Repay(_offerId, offer.collection, offer.tokenId, msg.sender, offer.borrowAmount);
     }
 
+    // Borrower can update an offer that hasn't been applied yet
     function updateOffer(bytes16 _offerId, uint256 _borrowAmount, uint256 _borrowPeriod, uint256 _lenderFeeRate)
         external
         whenNotPaused
@@ -388,6 +390,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         emit OfferUpdated(_offerId, offer.collection, offer.tokenId, offer.borrowAmount, offer.borrowPeriod, offerHash);
     }
 
+    // Borrower can cancel an offer that hasn't been applied to get nft back
     function cancelOffer(bytes16 _offerId)
         external
         whenNotPaused
@@ -396,12 +399,10 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         Offer storage offer = _offers[_offerId];
 
         // Validations
-        require(
-            offer.owner == msg.sender,
-            "only owner can cancel offer"
-        );
+        require(offer.owner == msg.sender, "only owner can cancel offer");
         require(offer.lender == address(0), "only update unapply offer");
         require(offer.state == OfferState.OPEN, "can only cancel open offer");
+
         offer.state = OfferState.CANCELED;
 
         // Send NFT back to borrower
@@ -488,12 +489,8 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         );
     }
 
-    /**
-     *
-     * In liquidation period, only lender can claim NFT
-     * After liquidation period, anyone with fast hand can claim NFT
-     *
-     **/
+    // Lender can claim nft after the loan is past due
+    // and the borrower has not yet repayed
     function claim(bytes16 _offerId)
         external
         override
