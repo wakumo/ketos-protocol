@@ -375,6 +375,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.lender == address(0), "only update unapply offer");
         require(_lenderFeeRate >= MIN_LENDER_FEE_RATE, "lt_min_lender_fee_RATE");
         require(_lenderFeeRate <= MAX_LENDER_FEE_RATE, "gt_max_lender_fee_RATE");
+        require(_borrowPeriod <= PawnShopLibrary.YEAR_IN_SECONDS, "exceeded borrow period");
 
         // Update offer if has changed?
         if (_borrowPeriod > 0) offer.borrowPeriod = _borrowPeriod;
