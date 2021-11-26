@@ -490,9 +490,13 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         );
     }
 
-    // Lender can claim nft after the loan is past due
-    // and the borrower has not yet repayed
-    function claim(bytes16 _offerId)
+    /**
+     *
+     * Lender can claim nft after the loan is past due
+     * and the borrower has not yet repayed
+     *
+     **/
+    function claim(bytes16 _offerId, address _to)
         external
         override
         nonReentrant
@@ -503,11 +507,12 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         require(offer.state == OfferState.LENDING, "offer not lending");
         require(block.timestamp > offer.startLendingAt.add(offer.borrowPeriod), "can not claim in lending period");
         require(offer.lender == msg.sender, "only lender can claim NFT at this time");
+        if (_to == address(0)) _to = offer.lender;
 
         // Send NFT to taker
-        _nftSafeTransfer(address(this), msg.sender, offer.collection, offer.tokenId, offer.nftAmount, offer.nftType);
+        _nftSafeTransfer(address(this), _to, offer.collection, offer.tokenId, offer.nftAmount, offer.nftType);
         offer.state = OfferState.CLAIMED;
-        emit NFTClaim(_offerId, offer.collection, offer.tokenId, msg.sender);
+        emit NFTClaim(_offerId, offer.collection, offer.tokenId, _to);
     }
 
     /**

@@ -915,7 +915,7 @@ describe('ERC721 PawnShop', function () {
     it('can not claim an in-progress offer', async function () {
       await pawnShop
         .connect(lender)
-        .claim(data.offerId)
+        .claim(data.offerId, lender.address)
         .catch((e) => {
           expect(e.message).to.include('can not claim in lending period')
         })
@@ -925,7 +925,7 @@ describe('ERC721 PawnShop', function () {
       await network.provider.send('evm_setNextBlockTimestamp', [
         utils.convertInt(offer.startLendingAt.add(offer.borrowPeriod).add(100)), // after 7 day
       ])
-      await pawnShop.claim(data.offerId).catch((e) => {
+      await pawnShop.claim(data.offerId, lender.address).catch((e) => {
         expect(e.message).to.include('only lender can claim NFT at this time')
       })
     })
@@ -936,13 +936,35 @@ describe('ERC721 PawnShop', function () {
       ])
       await pawnShop
         .connect(treasury)
-        .claim(data.offerId)
+        .claim(data.offerId, lender.address)
         .catch((e) => {
           expect(e.message).to.include('only lender can claim NFT at this time')
         })
-      await expect(pawnShop.connect(lender).claim(data.offerId))
+      await expect(pawnShop.connect(lender).claim(data.offerId, lender.address))
         .to.emit(pawnShop, 'NFTClaim')
         .withArgs(data.offerId, data.collection, data.tokenId, lender.address)
+    })
+
+    it('transfer NFT to _to address', async function() {
+            const offer = await pawnShop.getOffer(data.offerId)
+      await network.provider.send('evm_setNextBlockTimestamp', [
+        utils.convertInt(offer.startLendingAt.add(offer.borrowPeriod).add(100)), // after 7 day
+      ])
+      await expect(pawnShop.connect(lender).claim(data.offerId, treasury.address))
+        .to.emit(pawnShop, 'NFTClaim')
+        .withArgs(data.offerId, data.collection, data.tokenId, treasury.address)
+      expect(await testERC721.ownerOf(data.tokenId)).to.eq(treasury.address)
+    })
+
+    it('It will transfer to lender address if _to is address 0', async function() {
+      const offer = await pawnShop.getOffer(data.offerId)
+      await network.provider.send('evm_setNextBlockTimestamp', [
+        utils.convertInt(offer.startLendingAt.add(offer.borrowPeriod).add(100)), // after 7 day
+      ])
+      await expect(pawnShop.connect(lender).claim(data.offerId, utils.address0))
+        .to.emit(pawnShop, 'NFTClaim')
+        .withArgs(data.offerId, data.collection, data.tokenId, lender.address)
+      expect(await testERC721.ownerOf(data.tokenId)).to.eq(lender.address)
     })
   })
 
