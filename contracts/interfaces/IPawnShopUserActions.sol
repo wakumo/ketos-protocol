@@ -32,7 +32,7 @@ interface IPawnShopUserActions {
 
     function extendLendingTime(bytes16 _offerId, uint256 _borrowPeriod) external payable;
 
-    function claim(bytes16 _offerId) external;
+    function claim(bytes16 _offerId, address _to) external;
 
     function quoteFees(uint256 _borrowAmount, uint256 _lenderFeeRate, uint256 _serviceFeeRate, uint256 _lendingPeriod) external view returns (uint256 lenderFee, uint256 serviceFee);
 

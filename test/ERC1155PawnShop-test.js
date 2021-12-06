@@ -829,7 +829,7 @@ describe('ERC1155 PawnShop', function () {
     it('can not claim an in-progress offer', async function () {
       await pawnShop
         .connect(lender)
-        .claim(data.offerId)
+        .claim(data.offerId, lender.address)
         .catch((e) => {
           expect(e.message).to.include('can not claim in lending period')
         })
@@ -839,7 +839,7 @@ describe('ERC1155 PawnShop', function () {
       await network.provider.send('evm_setNextBlockTimestamp', [
         utils.convertInt(offer.startLendingAt.add(offer.borrowPeriod).add(100)), // after 7 day
       ])
-      await pawnShop.claim(data.offerId).catch((e) => {
+      await pawnShop.claim(data.offerId, lender.address).catch((e) => {
         expect(e.message).to.include('only lender can claim NFT at this time')
       })
     })
@@ -850,11 +850,11 @@ describe('ERC1155 PawnShop', function () {
       ])
       await pawnShop
         .connect(treasury)
-        .claim(data.offerId)
+        .claim(data.offerId, lender.address)
         .catch((e) => {
           expect(e.message).to.include('only lender can claim NFT at this time')
         })
-      await expect(pawnShop.connect(lender).claim(data.offerId))
+      await expect(pawnShop.connect(lender).claim(data.offerId, lender.address))
         .to.emit(pawnShop, 'NFTClaim')
         .withArgs(data.offerId, data.collection, data.tokenId, lender.address)
     })

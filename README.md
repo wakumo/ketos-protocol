@@ -48,4 +48,4 @@ We will promise the following:
 
 ## License
 
-The Aave Protocol is under [the AGPL v3 license](LICENSE.md)
+The Ketos Protocol is under [the AGPL v3 license](LICENSE.md)
