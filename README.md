@@ -12,7 +12,7 @@ The source code included is the final production version of the protocol. Eventu
 
 ## Audits report
 
-- [Certik Smart Contracts audit](https://leaderboard.certik.io/projects/wakumo)
+- [Certik Smart Contracts audit](https://leaderboard.certik.io/projects/ketos)
 
 ## Responsible disclosure
 
