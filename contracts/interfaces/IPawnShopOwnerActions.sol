@@ -7,4 +7,6 @@ interface IPawnShopOwnerActions {
     function setServiceFeeRate(address _token, uint256 _feeRate) external;
 
     function removeSupportedTokens(address[] memory _tokens) external;
+
+    function updateTreasury(address _newTreasury) external;
 }

@@ -155,6 +155,11 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
             setServiceFeeRate(_tokens[i], _feeRates[i]);
         }
     }
+    
+    function updateTreasury(address _newTreasury) external override onlyOwner {
+        require(_newTreasury != address(0), "invalid_address");
+        treasury = payable(_newTreasury);
+    }
 
     function _addSupportedToken(address _token) internal onlyOwner {
         supportedTokens[_token] = true;
