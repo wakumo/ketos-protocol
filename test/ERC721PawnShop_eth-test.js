@@ -93,12 +93,12 @@ describe('ERC721 PawnShop ETH', function () {
     })
 
     it('should apply success', async function () {
-      quoteApplyAmount = await pawnShop.quoteApplyAmounts(data.offerId)
+      quoteApplyAmounts = await pawnShop.quoteApplyAmounts(data.offerId)
       await expect(
         pawnShop
           .connect(lender)
           .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-            value: quoteApplyAmount.approvedAmount,
+            value: quoteApplyAmounts.approvedAmount,
           }),
       )
         .to.emit(pawnShop, 'OfferApplied')
@@ -132,11 +132,11 @@ describe('ERC721 PawnShop ETH', function () {
           lenderFeeRate,
           1,
         ])
-      quoteApplyAmount = await pawnShop.quoteApplyAmounts(data.offerId)
+      quoteApplyAmounts = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-          value: quoteApplyAmount.approvedAmount,
+          value: quoteApplyAmounts.approvedAmount,
         })
     })
 
@@ -335,7 +335,7 @@ describe('ERC721 PawnShop ETH', function () {
         pawnShop
           .connect(lender)
           .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-            value: quoteApplyAmount.approvedAmount,
+            value: quoteApplyAmounts.approvedAmount,
           }),
       )
         .to.emit(pawnShop, 'OfferApplied')
@@ -351,11 +351,11 @@ describe('ERC721 PawnShop ETH', function () {
       )
     })
     it('Borrower extend not cost service fee', async function () {
-      quoteApplyAmount = await pawnShop.quoteApplyAmounts(data.offerId)
+      quoteApplyAmounts = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-          value: quoteApplyAmount.approvedAmount,
+          value: quoteApplyAmounts.approvedAmount,
         })
       fees = await pawnShop.quoteExtendFees(data.offerId, data.borrowPeriod)
       expect(fees.serviceFee).to.eq(0)

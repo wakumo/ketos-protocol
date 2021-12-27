@@ -98,12 +98,12 @@ describe('ERC1155 PawnShop ETH', function () {
     })
 
     it('should apply success', async function () {
-      quoteApplyAmount = await pawnShop.quoteApplyAmounts(data.offerId)
+      quoteApplyAmounts = await pawnShop.quoteApplyAmounts(data.offerId)
       await expect(
         pawnShop
           .connect(lender)
           .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-            value: quoteApplyAmount.approvedAmount,
+            value: quoteApplyAmounts.approvedAmount,
           }),
       )
         .to.emit(pawnShop, 'OfferApplied')
@@ -137,11 +137,11 @@ describe('ERC1155 PawnShop ETH', function () {
           lenderFeeRate,
           data.nftAmount,
         ])
-      quoteApplyAmount = await pawnShop.quoteApplyAmounts(data.offerId)
+      quoteApplyAmounts = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-          value: quoteApplyAmount.approvedAmount,
+          value: quoteApplyAmounts.approvedAmount,
         })
     })
 
