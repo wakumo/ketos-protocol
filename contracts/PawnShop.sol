@@ -331,7 +331,7 @@ contract PawnShop is IPawnShop, Ownable, Pausable, ReentrancyGuard {
         // Calculate Fees
         (uint256 lenderFee, uint256 serviceFee, ) = quoteApplyAmounts(_offerId);
         uint256 borrowAmountAfterFee = offer.borrowAmount.sub(lenderFee).sub(serviceFee);
-        if (offer.borrowToken == ETH_ADDRESS) require(msg.value >= (borrowAmountAfterFee.add(serviceFee)), "invalid-amount");
+        if (offer.borrowToken == ETH_ADDRESS) require(msg.value == (borrowAmountAfterFee.add(serviceFee)), "invalid-amount");
 
         if (serviceFee > 0) _safeTransfer(offer.borrowToken, msg.sender, treasury, serviceFee);
         _safeTransfer(offer.borrowToken, msg.sender, offer.to, borrowAmountAfterFee);

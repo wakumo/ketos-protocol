@@ -93,11 +93,12 @@ describe('ERC721 PawnShop ETH', function () {
     })
 
     it('should apply success', async function () {
+      quoteApplyAmount = await pawnShop.quoteApplyAmounts(data.offerId)
       await expect(
         pawnShop
           .connect(lender)
           .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-            value: data.borrowAmount,
+            value: quoteApplyAmount.approvedAmount,
           }),
       )
         .to.emit(pawnShop, 'OfferApplied')
@@ -131,10 +132,11 @@ describe('ERC721 PawnShop ETH', function () {
           lenderFeeRate,
           1,
         ])
+      quoteApplyAmount = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-          value: data.borrowAmount,
+          value: quoteApplyAmount.approvedAmount,
         })
     })
 
@@ -333,7 +335,7 @@ describe('ERC721 PawnShop ETH', function () {
         pawnShop
           .connect(lender)
           .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-            value: data.borrowAmount,
+            value: quoteApplyAmount.approvedAmount,
           }),
       )
         .to.emit(pawnShop, 'OfferApplied')
@@ -349,10 +351,11 @@ describe('ERC721 PawnShop ETH', function () {
       )
     })
     it('Borrower extend not cost service fee', async function () {
+      quoteApplyAmount = await pawnShop.quoteApplyAmounts(data.offerId)
       await pawnShop
         .connect(lender)
         .applyOffer(data.offerId, await pawnShop.getOfferHash(data.offerId), {
-          value: data.borrowAmount,
+          value: quoteApplyAmount.approvedAmount,
         })
       fees = await pawnShop.quoteExtendFees(data.offerId, data.borrowPeriod)
       expect(fees.serviceFee).to.eq(0)
