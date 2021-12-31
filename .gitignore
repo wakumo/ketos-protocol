@@ -5,3 +5,6 @@ node_modules
 cache
 artifacts
 package-lock.json
+
+scripts/
+hardhat.config.js
